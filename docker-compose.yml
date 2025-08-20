@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - JWT_SECRET=your-secret-key-here
+      - MAX_CONNECTIONS_PER_USER=5
+      - CONNECTION_TIMEOUT_MINUTES=15
+      - MAX_UPLOAD_SIZE_MB=5000
+      - CORS_ORIGINS=http://localhost:5173
+      - WS_PATH=/ws
+    volumes:
+      - ./backend:/app
+      - /app/tmp
+    working_dir: /app
+    command: go run main.go
+    networks:
+      - web-scp
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    working_dir: /app
+    command: npm run dev
+    depends_on:
+      - backend
+    networks:
+      - web-scp
+
+  # Test SFTP server for development
+  test-sftp:
+    image: atmoz/sftp:latest
+    ports:
+      - "2222:22"
+    command: testuser:testpass:1000:1000:upload
+    volumes:
+      - ./test-data:/home/testuser/upload
+    networks:
+      - web-scp
+
+networks:
+  web-scp:
+    driver: bridge
+
+volumes:
+  test-data:
