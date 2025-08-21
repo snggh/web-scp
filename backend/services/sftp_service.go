@@ -253,6 +253,15 @@ func (c *SFTPClient) ChangeDirectory(path string) error {
 	return nil
 }
 
+// GetFileStat returns file statistics for the given path
+func (c *SFTPClient) GetFileStat(path string) (os.FileInfo, error) {
+	stat, err := c.sftpClient.Stat(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to stat file: %w", err)
+	}
+	return stat, nil
+}
+
 func (c *SFTPClient) Close() error {
 	var sftpErr, sshErr error
 	

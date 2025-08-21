@@ -19,6 +19,13 @@ export interface ApiResponse<T> {
   error?: string
 }
 
+export interface DownloadResponse {
+  success: boolean
+  data?: Blob
+  fileName?: string
+  error?: string
+}
+
 class ApiClient {
   private sessionId: string | null = null
 
@@ -134,6 +141,67 @@ class ApiClient {
       method: 'PUT',
       body: JSON.stringify({ connectionId, oldPath, newPath }),
     })
+  }
+
+  async uploadFile(connectionId: string, file: File, remotePath: string) {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('connectionId', connectionId)
+    formData.append('remotePath', remotePath)
+
+    return this.request('/transfer/upload', {
+      method: 'POST',
+      body: formData,
+      headers: {
+        // Don't set Content-Type header - let the browser set it with boundary for FormData
+        ...this.getAuthHeaders(),
+      },
+    })
+  }
+
+  async downloadFile(connectionId: string, remotePath: string): Promise<DownloadResponse> {
+    try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        ...this.getAuthHeaders(),
+      }
+
+      const response = await fetch(`${API_BASE}/transfer/download`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ connectionId, remotePath }),
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(errorText || `HTTP error! status: ${response.status}`)
+      }
+
+      // Return the blob directly for binary data
+      return {
+        success: true,
+        data: await response.blob(),
+        fileName: this.extractFileName(remotePath),
+      }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      }
+    }
+  }
+
+  private extractFileName(path: string): string {
+    return path.split('/').pop() || 'downloaded_file'
+  }
+
+  private getAuthHeaders() {
+    const headers: Record<string, string> = {}
+    const sessionId = this.getSessionId()
+    if (sessionId) {
+      headers['X-Session-ID'] = sessionId
+    }
+    return headers
   }
 }
 

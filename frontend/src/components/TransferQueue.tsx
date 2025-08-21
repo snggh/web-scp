@@ -1,43 +1,35 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { TransferItem } from '@/types'
+import { TransferItem, TransferProgress, WSMessage } from '@/types'
 import { Upload, Download, Pause, Play, X, CheckCircle, AlertCircle } from 'lucide-react'
+import { useWebSocket } from '@/hooks/useWebSocket'
+import { useConnectionStore } from '@/stores/connectionStore'
 
 export function TransferQueue() {
-  const [transfers] = useState<TransferItem[]>([
-    {
-      id: '1',
-      type: 'upload',
-      fileName: 'document.pdf',
-      progress: 75,
-      status: 'transferring',
-      speed: 1024 * 1024 * 2, // 2 MB/s
-      remainingTime: 30,
-    },
-    {
-      id: '2',
-      type: 'download',
-      fileName: 'image.jpg',
-      progress: 100,
-      status: 'completed',
-    },
-    {
-      id: '3',
-      type: 'upload',
-      fileName: 'video.mp4',
-      progress: 0,
-      status: 'pending',
-    },
-    {
-      id: '4',
-      type: 'download',
-      fileName: 'archive.zip',
-      progress: 45,
-      status: 'error',
-      error: 'Connection lost',
-    },
-  ])
+  const { lastMessage, isConnected } = useWebSocket()
+  const { transfers, updateTransferProgress, removeTransfer } = useConnectionStore()
+
+  // Listen for WebSocket messages and update transfers
+  useEffect(() => {
+    if (lastMessage && lastMessage.type === 'transfer_progress') {
+      const progress: TransferProgress = lastMessage.data
+      updateTransferProgress(progress)
+    }
+  }, [lastMessage, updateTransferProgress])
+
+  // Remove completed or failed transfers after a delay
+  useEffect(() => {
+    const completedTransfers = transfers.filter(t => t.status === 'completed' || t.status === 'error')
+
+    if (completedTransfers.length > 0) {
+      const timer = setTimeout(() => {
+        completedTransfers.forEach(transfer => removeTransfer(transfer.id))
+      }, 5000) // Remove after 5 seconds
+
+      return () => clearTimeout(timer)
+    }
+  }, [transfers, removeTransfer])
 
   const formatSpeed = (bytesPerSecond: number) => {
     if (bytesPerSecond === 0) return ''
@@ -144,7 +136,11 @@ export function TransferQueue() {
 
               <div className="flex items-center gap-1 pt-1">
                 {getActionButton(transfer)}
-                <Button variant="outline" size="sm">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => removeTransfer(transfer.id)}
+                >
                   <X className="h-3 w-3" />
                 </Button>
               </div>
@@ -154,7 +150,12 @@ export function TransferQueue() {
       ))}
 
       <div className="text-xs text-muted-foreground text-center pt-2">
-        {transfers.filter(t => t.status === 'transferring').length} active transfers
+        <div className="flex items-center justify-center gap-2">
+          <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
+          <span>{isConnected ? 'Connected' : 'Disconnected'}</span>
+          <span>•</span>
+          <span>{transfers.filter(t => t.status === 'transferring').length} active transfers</span>
+        </div>
       </div>
     </div>
   )

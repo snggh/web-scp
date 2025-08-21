@@ -108,18 +108,9 @@ func main() {
 
 	// Transfer routes
 	transfer := api.Group("/transfer")
-	transfer.Post("/upload", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{"message": "Transfer upload endpoint"})
-	})
-	transfer.Get("/download", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{"message": "Transfer download endpoint"})
-	})
-	transfer.Get("/queue", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{"message": "Transfer queue endpoint"})
-	})
-	transfer.Delete("/:id", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{"message": "Transfer cancel endpoint"})
-	})
+	transfer.Use(handlers.GlobalAuthHandler.OptionalAuthMiddleware) // Allow both authenticated and anonymous access for testing
+	transfer.Post("/upload", handlers.GlobalFileHandler.UploadFile)
+	transfer.Post("/download", handlers.GlobalFileHandler.DownloadFile)
 
 	// WebSocket route
 	app.Get("/ws", handlers.GlobalHub.HandleWebSocket)
