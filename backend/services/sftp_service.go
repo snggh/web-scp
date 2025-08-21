@@ -57,8 +57,19 @@ func (s *SFTPService) Connect(ctx context.Context, config models.ConnectionReque
 	}
 
 	// Add authentication method
-	if config.KeyFile != "" {
-		// SSH key authentication
+	if config.KeyContent != "" {
+		// SSH key authentication from content
+		key, err := s.parsePrivateKeyContent(config.KeyContent, config.Passphrase)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse private key: %w", err)
+		}
+
+		// Create a public key callback function
+		sshConfig.Auth = []ssh.AuthMethod{ssh.PublicKeysCallback(func() ([]ssh.Signer, error) {
+			return []ssh.Signer{key}, nil
+		})}
+	} else if config.KeyFile != "" {
+		// SSH key authentication from file (legacy support)
 		key, err := s.loadPrivateKey(config.KeyFile, config.Password)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load private key: %w", err)
@@ -73,7 +84,14 @@ func (s *SFTPService) Connect(ctx context.Context, config models.ConnectionReque
 
 	// Connect to SSH server
 	resolvedHost := s.resolveHost(config.Host)
-	address := net.JoinHostPort(resolvedHost, strconv.Itoa(config.Port))
+	resolvedPort := config.Port
+
+	// Special handling for test SFTP server - use internal port
+	if resolvedHost == "test-sftp" && config.Port == 2222 {
+		resolvedPort = 22
+	}
+
+	address := net.JoinHostPort(resolvedHost, strconv.Itoa(resolvedPort))
 	sshClient, err := ssh.Dial("tcp", address, sshConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to SSH server: %w", err)
@@ -98,12 +116,14 @@ func (s *SFTPService) Connect(ctx context.Context, config models.ConnectionReque
 func (s *SFTPService) TestConnection(ctx context.Context, config models.TestConnectionRequest) error {
 	// Convert TestConnectionRequest to ConnectionRequest
 	connConfig := models.ConnectionRequest{
-		Protocol: config.Protocol,
-		Host:     config.Host,
-		Port:     config.Port,
-		Username: config.Username,
-		Password: config.Password,
-		KeyFile:  config.KeyFile,
+		Protocol:   config.Protocol,
+		Host:       config.Host,
+		Port:       config.Port,
+		Username:   config.Username,
+		Password:   config.Password,
+		KeyFile:    config.KeyFile,
+		KeyContent: config.KeyContent,
+		Passphrase: config.Passphrase,
 	}
 
 	client, err := s.Connect(ctx, connConfig)
@@ -303,15 +323,35 @@ func (s *SFTPService) loadPrivateKey(keyPath, passphrase string) (ssh.Signer, er
 	return signer, nil
 }
 
+// parsePrivateKeyContent parses SSH private key content provided as a string
+func (s *SFTPService) parsePrivateKeyContent(keyContent, passphrase string) (ssh.Signer, error) {
+	key := []byte(keyContent)
+
+	var signer ssh.Signer
+	var err error
+	if passphrase != "" {
+		signer, err = ssh.ParsePrivateKeyWithPassphrase(key, []byte(passphrase))
+	} else {
+		signer, err = ssh.ParsePrivateKey(key)
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse private key content: %w", err)
+	}
+
+	return signer, nil
+}
+
 // resolveHost translates localhost addresses appropriately for the environment
 func (s *SFTPService) resolveHost(host string) string {
 	// For local development, keep localhost as-is
-	// For Docker environment, translate to host.docker.internal
+	// For Docker environment, handle container networking
 	// This can be improved with environment detection
 	if host == "localhost" || host == "127.0.0.1" || host == "0.0.0.0" {
 		// Check if we're in Docker by looking for .dockerenv file
 		if _, err := os.Stat("/.dockerenv"); err == nil {
-			return "host.docker.internal"
+			// In Docker environment, use test-sftp container name
+			return "test-sftp"
 		}
 		// Local development - keep localhost
 		return host

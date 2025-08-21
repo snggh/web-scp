@@ -7,6 +7,8 @@ export interface TestConnectionRequest {
   username: string
   password?: string
   keyFile?: string
+  keyContent?: string
+  passphrase?: string
 }
 
 export interface ConnectRequest extends TestConnectionRequest {

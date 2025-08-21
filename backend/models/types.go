@@ -10,22 +10,26 @@ const (
 )
 
 type ConnectionRequest struct {
-	Name     string   `json:"name" validate:"required"`
-	Protocol Protocol `json:"protocol" validate:"required,oneof=ftp sftp"`
-	Host     string   `json:"host" validate:"required"`
-	Port     int      `json:"port" validate:"required,min=1,max=65535"`
-	Username string   `json:"username" validate:"required"`
-	Password string   `json:"password"`
-	KeyFile  string   `json:"keyFile"`
+	Name       string   `json:"name" validate:"required"`
+	Protocol   Protocol `json:"protocol" validate:"required,oneof=ftp sftp"`
+	Host       string   `json:"host" validate:"required"`
+	Port       int      `json:"port" validate:"required,min=1,max=65535"`
+	Username   string   `json:"username" validate:"required"`
+	Password   string   `json:"password"`
+	KeyFile    string   `json:"keyFile"`
+	KeyContent string   `json:"keyContent"`
+	Passphrase string   `json:"passphrase"`
 }
 
 type TestConnectionRequest struct {
-	Protocol Protocol `json:"protocol" validate:"required,oneof=ftp sftp"`
-	Host     string   `json:"host" validate:"required"`
-	Port     int      `json:"port" validate:"required,min=1,max=65535"`
-	Username string   `json:"username" validate:"required"`
-	Password string   `json:"password"`
-	KeyFile  string   `json:"keyFile"`
+	Protocol   Protocol `json:"protocol" validate:"required,oneof=ftp sftp"`
+	Host       string   `json:"host" validate:"required"`
+	Port       int      `json:"port" validate:"required,min=1,max=65535"`
+	Username   string   `json:"username" validate:"required"`
+	Password   string   `json:"password"`
+	KeyFile    string   `json:"keyFile"`
+	KeyContent string   `json:"keyContent"`
+	Passphrase string   `json:"passphrase"`
 }
 
 type Connection struct {
