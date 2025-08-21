@@ -30,8 +30,8 @@ func main() {
 	// Initialize services
 	poolConfig := &services.PoolConfig{
 		MaxConnectionsPerUser: cfg.MaxConnectionsPerUser,
-		ConnectionTimeout:     cfg.ConnectionTimeout,
-		CleanupInterval:       5 * time.Minute,
+		ConnectionTimeout:     30 * time.Minute, // Extended for debugging
+		CleanupInterval:       2 * time.Minute,  // More frequent cleanup for debugging
 	}
 	services.InitPoolManager(poolConfig)
 
@@ -67,7 +67,7 @@ func main() {
 	app.Use(cors.New(cors.Config{
 		AllowOrigins:     getEnv("CORS_ORIGINS", "http://localhost:5173"),
 		AllowMethods:     "GET,POST,PUT,DELETE,OPTIONS",
-		AllowHeaders:     "Origin,Content-Type,Accept,Authorization",
+		AllowHeaders:     "Origin,Content-Type,Accept,Authorization,X-Session-ID",
 		AllowCredentials: true,
 	}))
 

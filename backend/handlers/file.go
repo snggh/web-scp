@@ -41,12 +41,17 @@ func (h *FileHandler) ListFiles(c *fiber.Ctx) error {
 		})
 	}
 
-	// Get user session
+		// Get user session
 	userSession := c.Get("X-Session-ID")
 	if userSession == "" {
-		// For testing without authentication, create temporary session
-		userSession = "temp-session-list"
+		return c.Status(401).JSON(models.APIResponse{
+			Success: false,
+			Error:   "User session not found",
+		})
 	}
+
+	// Debug logging
+	fmt.Printf("File list request - Session: '%s', ConnectionID: %s, Path: %s\n", userSession, connectionID, decodedPath)
 
 	// Get connection from pool
 	pooledConn, err := h.poolManager.GetConnection(userSession, connectionID)
@@ -120,7 +125,10 @@ func (h *FileHandler) CreateDirectory(c *fiber.Ctx) error {
 	// Get user session
 	userSession := c.Get("X-Session-ID")
 	if userSession == "" {
-		userSession = "temp-session-mkdir"
+		return c.Status(401).JSON(models.APIResponse{
+			Success: false,
+			Error:   "User session not found",
+		})
 	}
 
 	// Get connection from pool
@@ -189,7 +197,10 @@ func (h *FileHandler) DeleteFile(c *fiber.Ctx) error {
 	// Get user session
 	userSession := c.Get("X-Session-ID")
 	if userSession == "" {
-		userSession = "temp-session-delete"
+		return c.Status(401).JSON(models.APIResponse{
+			Success: false,
+			Error:   "User session not found",
+		})
 	}
 
 	// Get connection from pool
@@ -259,7 +270,10 @@ func (h *FileHandler) RenameFile(c *fiber.Ctx) error {
 	// Get user session
 	userSession := c.Get("X-Session-ID")
 	if userSession == "" {
-		userSession = "temp-session-rename"
+		return c.Status(401).JSON(models.APIResponse{
+			Success: false,
+			Error:   "User session not found",
+		})
 	}
 
 	// Get connection from pool

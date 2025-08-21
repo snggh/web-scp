@@ -7,12 +7,37 @@ description: Development workflow, testing, and deployment guidelines
 
 ## Development Commands
 
-### Backend (Go)
+**IMPORTANT: User runs dev server manually using docker-compose. Never run 'npm run dev' or 'go run main.go' manually.**
+
+### Current Development Setup
+The user runs the entire development environment via docker-compose, which includes:
+- Backend server on `http://localhost:3000`
+- Frontend on `http://localhost:5173` 
+- Test SFTP server on `localhost:2222` (testuser/testpass)
+
+### Docker Development (Primary Method)
+```bash
+# Full environment with test SFTP server
+docker-compose up
+
+# Start in background  
+docker-compose up -d
+
+# Stop services
+docker-compose down
+
+# Restart specific service
+docker-compose restart frontend
+docker-compose restart backend
+
+# View logs
+docker-compose logs frontend
+docker-compose logs backend
+```
+
+### Backend (Go) - For Reference Only
 ```bash
 cd backend
-
-# Start development server
-go run main.go
 
 # Install dependencies
 go mod download
@@ -30,12 +55,12 @@ go test ./...
 go fmt ./...
 ```
 
-### Frontend (React)
+### Frontend (React) - For Reference Only
 ```bash
 cd frontend
 
-# Start development server (Vite)
-npm run dev
+# Install dependencies
+npm install
 
 # Build for production
 npm run build
@@ -45,21 +70,6 @@ npm run preview
 
 # Lint code (if configured)
 npm run lint
-
-# Install dependencies
-npm install
-```
-
-### Docker Development
-```bash
-# Full environment with test SFTP server
-docker-compose up
-
-# Start in background
-docker-compose up -d
-
-# Stop services
-docker-compose down
 ```
 
 ## Development Workflow
@@ -97,11 +107,17 @@ docker-compose down
 - **Integration Tests**: Test API interactions and state management
 - **WebSocket Mocking**: Simulate real-time progress updates
 
-### Test SFTP Server
+### Test SFTP Server (Docker Container)
 - **Host**: `localhost:2222`
 - **Credentials**: `testuser:testpass`
 - **Upload directory**: `./test-data`
+- **Container**: Runs via docker-compose as `test-sftp` service
 - **Use for**: Development testing, integration tests, debugging
+
+### Environment Configuration Notes
+- **Docker Development**: Frontend uses `http://backend:3000` for API calls within Docker network
+- **Local Development**: Frontend would use `http://localhost:3000` if run locally
+- **Vite Config**: Automatically detects environment and adjusts proxy targets
 
 ## Environment Configuration
 

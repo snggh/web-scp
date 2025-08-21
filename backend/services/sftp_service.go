@@ -126,10 +126,13 @@ func (c *SFTPClient) ListFiles(path string) ([]models.FileInfo, error) {
 		path = "/"
 	}
 
+	fmt.Printf("SFTP ListFiles called for path: %s\n", path)
 	entries, err := c.sftpClient.ReadDir(path)
 	if err != nil {
+		fmt.Printf("SFTP ListFiles error: %v\n", err)
 		return nil, fmt.Errorf("failed to list directory: %w", err)
 	}
+	fmt.Printf("SFTP ListFiles success, found %d entries\n", len(entries))
 
 	files := make([]models.FileInfo, 0, len(entries))
 	for _, entry := range entries {
@@ -294,12 +297,18 @@ func (s *SFTPService) loadPrivateKey(keyPath, passphrase string) (ssh.Signer, er
 	return signer, nil
 }
 
-// resolveHost translates localhost addresses to work within Docker containers
+// resolveHost translates localhost addresses appropriately for the environment
 func (s *SFTPService) resolveHost(host string) string {
-	// When running in Docker, localhost/127.0.0.1 refers to the container itself
-	// We need to use host.docker.internal to reach the host machine
+	// For local development, keep localhost as-is
+	// For Docker environment, translate to host.docker.internal
+	// This can be improved with environment detection
 	if host == "localhost" || host == "127.0.0.1" || host == "0.0.0.0" {
-		return "host.docker.internal"
+		// Check if we're in Docker by looking for .dockerenv file
+		if _, err := os.Stat("/.dockerenv"); err == nil {
+			return "host.docker.internal"
+		}
+		// Local development - keep localhost
+		return host
 	}
 	return host
 }

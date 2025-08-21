@@ -14,13 +14,16 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://backend:3000',
+        target: process.env.BACKEND_URL || 'http://backend:3000',
         changeOrigin: true,
+        secure: false,
+        logLevel: 'debug'
       },
       '/ws': {
-        target: 'ws://backend:3000',
+        target: process.env.WS_URL || 'ws://backend:3000',
         ws: true,
         changeOrigin: true,
+        secure: false,
       },
     },
   },

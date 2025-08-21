@@ -162,6 +162,14 @@ func (h *AuthHandler) AuthMiddleware(c *fiber.Ctx) error {
 
 // OptionalAuthMiddleware extracts user session if token is present, but doesn't require it
 func (h *AuthHandler) OptionalAuthMiddleware(c *fiber.Ctx) error {
+	// First, check for X-Session-ID header (for temporary sessions)
+	sessionID := c.Get("X-Session-ID")
+	if sessionID != "" {
+		c.Set("X-Session-ID", sessionID)
+		return c.Next()
+	}
+
+	// Fallback to JWT token authentication
 	authHeader := c.Get("Authorization")
 	if authHeader != "" && len(authHeader) > 7 && authHeader[:7] == "Bearer " {
 		tokenString := authHeader[7:]
