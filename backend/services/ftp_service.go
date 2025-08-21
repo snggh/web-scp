@@ -48,7 +48,8 @@ func (s *FTPService) Connect(ctx context.Context, config models.ConnectionReques
 	}
 
 	// Create FTP connection
-	address := net.JoinHostPort(config.Host, strconv.Itoa(config.Port))
+	resolvedHost := s.resolveHost(config.Host)
+	address := net.JoinHostPort(resolvedHost, strconv.Itoa(config.Port))
 	
 	conn, err := ftp.Dial(address, ftp.DialWithTimeout(s.config.ConnectTimeout))
 	if err != nil {
@@ -218,6 +219,16 @@ func (c *FTPClient) Close() error {
 		}
 	}
 	return nil
+}
+
+// resolveHost translates localhost addresses to work within Docker containers
+func (s *FTPService) resolveHost(host string) string {
+	// When running in Docker, localhost/127.0.0.1 refers to the container itself
+	// We need to use host.docker.internal to reach the host machine
+	if host == "localhost" || host == "127.0.0.1" || host == "0.0.0.0" {
+		return "host.docker.internal"
+	}
+	return host
 }
 
 // Global FTP service instance

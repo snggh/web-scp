@@ -51,6 +51,7 @@ func main() {
 	// Initialize handlers
 	handlers.InitAuthHandler(cfg)
 	handlers.InitConnectionHandler(services.GlobalPoolManager, services.GlobalSFTPService, services.GlobalFTPService)
+	handlers.InitFileHandler(services.GlobalPoolManager)
 
 	// Start WebSocket hub
 	go handlers.GlobalHub.Run()
@@ -99,18 +100,11 @@ func main() {
 
 	// File routes
 	files := api.Group("/files")
-	files.Get("/list", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{"message": "File list endpoint"})
-	})
-	files.Post("/mkdir", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{"message": "File mkdir endpoint"})
-	})
-	files.Delete("/delete", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{"message": "File delete endpoint"})
-	})
-	files.Put("/rename", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{"message": "File rename endpoint"})
-	})
+	files.Use(handlers.GlobalAuthHandler.OptionalAuthMiddleware) // Allow both authenticated and anonymous access for testing
+	files.Get("/list", handlers.GlobalFileHandler.ListFiles)
+	files.Post("/mkdir", handlers.GlobalFileHandler.CreateDirectory)
+	files.Delete("/delete", handlers.GlobalFileHandler.DeleteFile)
+	files.Put("/rename", handlers.GlobalFileHandler.RenameFile)
 
 	// Transfer routes
 	transfer := api.Group("/transfer")

@@ -72,7 +72,8 @@ func (s *SFTPService) Connect(ctx context.Context, config models.ConnectionReque
 	}
 
 	// Connect to SSH server
-	address := net.JoinHostPort(config.Host, strconv.Itoa(config.Port))
+	resolvedHost := s.resolveHost(config.Host)
+	address := net.JoinHostPort(resolvedHost, strconv.Itoa(config.Port))
 	sshClient, err := ssh.Dial("tcp", address, sshConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to SSH server: %w", err)
@@ -291,6 +292,16 @@ func (s *SFTPService) loadPrivateKey(keyPath, passphrase string) (ssh.Signer, er
 	}
 
 	return signer, nil
+}
+
+// resolveHost translates localhost addresses to work within Docker containers
+func (s *SFTPService) resolveHost(host string) string {
+	// When running in Docker, localhost/127.0.0.1 refers to the container itself
+	// We need to use host.docker.internal to reach the host machine
+	if host == "localhost" || host == "127.0.0.1" || host == "0.0.0.0" {
+		return "host.docker.internal"
+	}
+	return host
 }
 
 // Global SFTP service instance
