@@ -1,0 +1,318 @@
+---
+alwaysApply: false
+description: File transfer and streaming implementation patterns
+---
+
+# File Transfer and Streaming Patterns
+
+## Core Principles
+- **Never store files on backend** - always stream directly between client and remote server
+- **Memory-efficient processing** using Go's `io.Copy` and `io.Pipe`
+- **Real-time progress tracking** via WebSocket with throttling
+- **Connection pooling** for efficient resource management
+
+## Backend Streaming Implementation
+
+### Upload Handler Pattern
+```go
+func StreamUpload(c *fiber.Ctx) error {
+    // 1. Get SFTP client from connection pool
+    client, err := poolManager.GetClient(connectionID)
+    if err != nil {
+        return c.Status(400).JSON(APIResponse{
+            Success: false,
+            Error:   "Invalid connection",
+        })
+    }
+
+    // 2. Create remote file
+    remoteFile, err := client.Create(remotePath)
+    if err != nil {
+        return c.Status(500).JSON(APIResponse{
+            Success: false,
+            Error:   "Failed to create remote file",
+        })
+    }
+    defer remoteFile.Close()
+
+    // 3. Stream request body directly to remote server
+    reader := c.Context().RequestBodyStream()
+    _, err = io.Copy(remoteFile, reader)
+
+    if err != nil {
+        return c.Status(500).JSON(APIResponse{
+            Success: false,
+            Error:   "Upload failed",
+        })
+    }
+
+    return c.JSON(APIResponse{
+        Success: true,
+        Message: "Upload completed successfully",
+    })
+}
+```
+
+### Download Handler Pattern
+```go
+func StreamDownload(c *fiber.Ctx) error {
+    // 1. Get SFTP client from connection pool
+    client, err := poolManager.GetClient(connectionID)
+    if err != nil {
+        return c.Status(400).JSON(APIResponse{
+            Success: false,
+            Error:   "Invalid connection",
+        })
+    }
+
+    // 2. Open remote file
+    remoteFile, err := client.Open(remotePath)
+    if err != nil {
+        return c.Status(404).JSON(APIResponse{
+            Success: false,
+            Error:   "File not found",
+        })
+    }
+    defer remoteFile.Close()
+
+    // 3. Stream file directly to response
+    c.Set("Content-Type", "application/octet-stream")
+    c.Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
+
+    return c.SendStream(remoteFile)
+}
+```
+
+## Progress Tracking Implementation
+
+### WebSocket Progress Updates
+```go
+type ProgressMessage struct {
+    TransferID   string  `json:"transferId"`
+    Progress     float64 `json:"progress"`     // 0.0 to 1.0
+    BytesTotal   int64   `json:"bytesTotal"`
+    BytesCurrent int64   `json:"bytesCurrent"`
+    Status       string  `json:"status"`       // "uploading", "downloading", "completed", "error"
+    Error        string  `json:"error,omitempty"`
+}
+
+// Progress writer wrapper
+type ProgressWriter struct {
+    writer     io.Writer
+    totalSize  int64
+    currentSize int64
+    transferID string
+    wsHub      *WebSocketHub
+}
+
+func (pw *ProgressWriter) Write(data []byte) (int, error) {
+    n, err := pw.writer.Write(data)
+    if err != nil {
+        return n, err
+    }
+
+    pw.currentSize += int64(n)
+    progress := float64(pw.currentSize) / float64(pw.totalSize)
+
+    // Throttle updates to max 10 per second
+    pw.wsHub.BroadcastProgress(ProgressMessage{
+        TransferID:   pw.transferID,
+        Progress:     progress,
+        BytesTotal:   pw.totalSize,
+        BytesCurrent: pw.currentSize,
+        Status:       "uploading",
+    })
+
+    return n, err
+}
+```
+
+## Frontend Progress Handling
+
+### React Hook for Transfer Progress
+```typescript
+const useFileTransfer = () => {
+    const [transfers, setTransfers] = useState<Map<string, TransferProgress>>(new Map());
+
+    const uploadFile = async (file: File, remotePath: string) => {
+        const transferId = generateTransferId();
+
+        // Initialize progress tracking
+        setTransfers(prev => new Map(prev).set(transferId, {
+            id: transferId,
+            filename: file.name,
+            progress: 0,
+            status: 'uploading',
+            bytesTotal: file.size,
+            bytesCurrent: 0,
+        }));
+
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('path', remotePath);
+
+            await api.uploadFile(formData, {
+                onUploadProgress: (progressEvent) => {
+                    const progress = progressEvent.loaded / progressEvent.total;
+                    setTransfers(prev => {
+                        const newMap = new Map(prev);
+                        const transfer = newMap.get(transferId);
+                        if (transfer) {
+                            newMap.set(transferId, {
+                                ...transfer,
+                                progress,
+                                bytesCurrent: progressEvent.loaded,
+                            });
+                        }
+                        return newMap;
+                    });
+                },
+            });
+
+            setTransfers(prev => {
+                const newMap = new Map(prev);
+                const transfer = newMap.get(transferId);
+                if (transfer) {
+                    newMap.set(transferId, {
+                        ...transfer,
+                        status: 'completed',
+                        progress: 1,
+                    });
+                }
+                return newMap;
+            });
+        } catch (error) {
+            setTransfers(prev => {
+                const newMap = new Map(prev);
+                const transfer = newMap.get(transferId);
+                if (transfer) {
+                    newMap.set(transferId, {
+                        ...transfer,
+                        status: 'error',
+                        error: error.message,
+                    });
+                }
+                return newMap;
+            });
+        }
+    };
+
+    return { transfers, uploadFile };
+};
+```
+
+## Connection Pool Management
+
+### Pool Manager Pattern
+```go
+type PoolManager struct {
+    connections   map[string]*Connection // userID -> connections
+    mutex         sync.RWMutex
+    maxPerUser    int
+    idleTimeout   time.Duration
+    cleanupTicker *time.Ticker
+}
+
+type Connection struct {
+    ID       string
+    Client   interface{} // *sftp.Client or ftp connection
+    Protocol string      // "sftp" or "ftp"
+    LastUsed time.Time
+    UserID   string
+}
+
+func (pm *PoolManager) GetClient(connectionID string) (interface{}, error) {
+    pm.mutex.RLock()
+    defer pm.mutex.RUnlock()
+
+    // Find connection by ID
+    for _, userConnections := range pm.connections {
+        for _, conn := range userConnections {
+            if conn.ID == connectionID {
+                conn.LastUsed = time.Now()
+                return conn.Client, nil
+            }
+        }
+    }
+
+    return nil, errors.New("connection not found")
+}
+
+func (pm *PoolManager) Cleanup() {
+    pm.mutex.Lock()
+    defer pm.mutex.Unlock()
+
+    now := time.Now()
+    for userID, userConnections := range pm.connections {
+        for connID, conn := range userConnections {
+            if now.Sub(conn.LastUsed) > pm.idleTimeout {
+                // Close connection and remove from pool
+                pm.closeConnection(conn)
+                delete(userConnections, connID)
+            }
+        }
+        if len(userConnections) == 0 {
+            delete(pm.connections, userID)
+        }
+    }
+}
+```
+
+## Error Handling and Recovery
+
+### Retry Logic
+```go
+func (pm *PoolManager) ExecuteWithRetry(operation func() error, maxRetries int) error {
+    var lastErr error
+    for i := 0; i < maxRetries; i++ {
+        err := operation()
+        if err == nil {
+            return nil
+        }
+
+        lastErr = err
+
+        // Check if error is retryable
+        if !isRetryableError(err) {
+            break
+        }
+
+        // Exponential backoff
+        time.Sleep(time.Duration(i+1) * time.Second)
+    }
+    return lastErr
+}
+```
+
+### Transfer Cancellation
+```go
+type CancellableTransfer struct {
+    ctx    context.Context
+    cancel context.CancelFunc
+    done   chan error
+}
+
+func (ct *CancellableTransfer) Start() {
+    go func() {
+        // Perform transfer with context
+        select {
+        case <-ct.ctx.Done():
+            ct.done <- ct.ctx.Err()
+        default:
+            // Transfer logic here
+            ct.done <- nil
+        }
+    }()
+}
+
+func (ct *CancellableTransfer) Cancel() {
+    ct.cancel()
+}
+
+func (ct *CancellableTransfer) Wait() error {
+    return <-ct.done
+}
+```
+
+These patterns ensure efficient, reliable file transfers with proper progress tracking and resource management.

@@ -1,18 +1,25 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useConnectionStore } from '@/stores/connectionStore'
 import { apiClient } from '@/services/api'
 import { FileItem } from '@/types'
-import { Folder, File, ArrowLeft, RefreshCw, Plus, Trash2, Edit, MoreVertical } from 'lucide-react'
+import { Folder, File, ArrowLeft, RefreshCw, Plus, Trash2, Edit, Upload, Download } from 'lucide-react'
 
 export function FileExplorer() {
   const { activeConnection } = useConnectionStore()
   const [files, setFiles] = useState<FileItem[]>([])
   const [isLoading, setIsLoading] = useState(false)
-  
+
   // File operation states
   const [isOperating, setIsOperating] = useState(false)
+
+  // Drag and drop states
+  const [isDragOver, setIsDragOver] = useState(false)
+  const [isUploading, setIsUploading] = useState(false)
+
+  // File input ref
+  const fileInputRef = useRef<HTMLInputElement>(null)
   
   // Calculate default path based on connection without useEffect
   const getDefaultPath = (connection: typeof activeConnection) => {
@@ -25,13 +32,9 @@ export function FileExplorer() {
   const [currentPath, setCurrentPath] = useState(() => getDefaultPath(activeConnection))
 
   const loadFiles = async (path: string) => {
-    console.log('loadFiles called with activeConnection:', activeConnection)
     if (!activeConnection?.id) {
-      console.warn('No active connection or connection ID missing:', activeConnection)
       return
     }
-
-    console.log('Loading files:', { connectionId: activeConnection.id, path })
     setIsLoading(true)
     try {
       const response = await apiClient.listFiles(activeConnection.id, path)
@@ -198,6 +201,88 @@ export function FileExplorer() {
     }
   }
 
+  // File upload handlers
+  const handleFileSelect = (selectedFiles: FileList | null) => {
+    if (!selectedFiles || !activeConnection?.id) return
+
+    const filesArray = Array.from(selectedFiles)
+    handleFilesUpload(filesArray)
+  }
+
+  const handleFilesUpload = async (files: File[]) => {
+    if (!activeConnection?.id || files.length === 0) return
+
+    setIsUploading(true)
+    try {
+      for (const file of files) {
+        const remotePath = currentPath.endsWith('/') ? currentPath + file.name : currentPath + '/' + file.name
+
+        const response = await apiClient.uploadFile(activeConnection.id, file, remotePath)
+        if (response.success) {
+          console.log('File uploaded successfully:', file.name)
+        } else {
+          console.error('Failed to upload file:', file.name, response.error)
+          alert('Failed to upload file: ' + response.error)
+        }
+      }
+
+      // Refresh file list after all uploads complete
+      loadFiles(currentPath)
+    } catch (error) {
+      console.error('Error uploading files:', error)
+      alert('Error uploading files')
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
+  const handleDownloadFile = async (file: FileItem) => {
+    if (!activeConnection?.id) return
+
+    try {
+      const response = await apiClient.downloadFile(activeConnection.id, file.path)
+
+      if (response.success && response.data) {
+        // Create download link using the blob from response
+        const url = window.URL.createObjectURL(response.data)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = response.fileName || file.name
+        document.body.appendChild(a)
+        a.click()
+        window.URL.revokeObjectURL(url)
+        document.body.removeChild(a)
+      } else {
+        console.error('Failed to download file:', response.error)
+        alert('Failed to download file: ' + response.error)
+      }
+    } catch (error) {
+      console.error('Error downloading file:', error)
+      alert('Error downloading file')
+    }
+  }
+
+  // Drag and drop handlers
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragOver(true)
+  }
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragOver(false)
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragOver(false)
+
+    const files = e.dataTransfer.files
+    if (files.length > 0) {
+      handleFileSelect(files)
+    }
+  }
+
   if (!activeConnection) {
     return (
       <div className="text-center text-muted-foreground py-8">
@@ -236,8 +321,8 @@ export function FileExplorer() {
         >
           <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
         </Button>
-        <Button 
-          variant="outline" 
+        <Button
+          variant="outline"
           size="sm"
           onClick={() => {
             const name = prompt('Enter directory name:')
@@ -249,9 +334,40 @@ export function FileExplorer() {
         >
           <Plus className="h-4 w-4" />
         </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={isLoading || isUploading}
+        >
+          <Upload className="h-4 w-4" />
+        </Button>
       </div>
 
-      <div className="border rounded-lg">
+      {/* Hidden file input */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        multiple
+        style={{ display: 'none' }}
+        onChange={(e) => handleFileSelect(e.target.files)}
+      />
+
+      <div
+        className={`border rounded-lg transition-colors ${
+          isDragOver ? 'border-primary bg-primary/5' : ''
+        }`}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
+        {isDragOver && (
+          <div className="p-8 text-center text-primary">
+            <Upload className="h-12 w-12 mx-auto mb-2" />
+            <p>Drop files here to upload</p>
+          </div>
+        )}
+
         <div className="grid grid-cols-12 gap-2 p-3 bg-muted text-sm font-medium border-b">
           <div className="col-span-5">Name</div>
           <div className="col-span-2">Size</div>
@@ -291,6 +407,21 @@ export function FileExplorer() {
               <div className="col-span-1 flex items-center gap-1">
                 {file.name !== '..' && (
                   <>
+                    {file.type === 'file' && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleDownloadFile(file)
+                        }}
+                        disabled={isOperating}
+                        title="Download file"
+                      >
+                        <Download className="h-3 w-3" />
+                      </Button>
+                    )}
                     <Button
                       variant="ghost"
                       size="sm"
@@ -322,9 +453,16 @@ export function FileExplorer() {
           ))}
         </div>
 
-        {files.length === 0 && (
+        {files.length === 0 && !isUploading && (
           <div className="p-8 text-center text-muted-foreground">
             {isLoading ? 'Loading...' : 'No files found'}
+          </div>
+        )}
+
+        {isUploading && (
+          <div className="p-8 text-center text-primary">
+            <Upload className="h-8 w-8 mx-auto mb-2 animate-bounce" />
+            <p>Uploading files...</p>
           </div>
         )}
       </div>

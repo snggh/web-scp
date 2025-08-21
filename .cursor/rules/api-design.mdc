@@ -1,0 +1,301 @@
+---
+globs: backend/handlers/*.go,backend/models/types.go
+description: API design patterns and conventions for Web-SCP
+---
+
+# API Design Patterns and Conventions
+
+## Response Format Standards
+
+### Consistent API Response Structure
+```go
+type APIResponse struct {
+    Success bool        `json:"success"`
+    Data    interface{} `json:"data,omitempty"`
+    Error   string      `json:"error,omitempty"`
+    Message string      `json:"message,omitempty"`
+    Code    string      `json:"code,omitempty"` // For specific error codes
+}
+```
+
+### Success Response Pattern
+```go
+func HandleSuccess(c *fiber.Ctx, data interface{}, message string) error {
+    return c.JSON(APIResponse{
+        Success: true,
+        Data:    data,
+        Message: message,
+    })
+}
+```
+
+### Error Response Pattern
+```go
+func HandleError(c *fiber.Ctx, statusCode int, error string, code string) error {
+    return c.Status(statusCode).JSON(APIResponse{
+        Success: false,
+        Error:   error,
+        Code:    code,
+    })
+}
+```
+
+## Request Validation
+
+### Input Validation Pattern
+```go
+type CreateConnectionRequest struct {
+    Host     string `json:"host" validate:"required,hostname"`
+    Port     int    `json:"port" validate:"required,min=1,max=65535"`
+    Username string `json:"username" validate:"required,min=1,max=100"`
+    Password string `json:"password,omitempty" validate:"min=1,max=1000"`
+    Protocol string `json:"protocol" validate:"required,oneof=sftp ftp"`
+}
+
+func ValidateAndParse[T any](c *fiber.Ctx, validator *validator.Validate) (*T, error) {
+    var req T
+    if err := c.BodyParser(&req); err != nil {
+        return nil, fmt.Errorf("invalid request body: %w", err)
+    }
+
+    if err := validator.Struct(req); err != nil {
+        return nil, fmt.Errorf("validation failed: %w", err)
+    }
+
+    return &req, nil
+}
+```
+
+## Authentication Middleware
+
+### JWT Authentication Pattern
+```go
+func JWTMiddleware() fiber.Handler {
+    return func(c *fiber.Ctx) error {
+        authHeader := c.Get("Authorization")
+        if authHeader == "" {
+            return HandleError(c, 401, "Missing authorization header", "MISSING_AUTH")
+        }
+
+        tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+        if tokenString == authHeader {
+            return HandleError(c, 401, "Invalid authorization format", "INVALID_AUTH_FORMAT")
+        }
+
+        claims, err := ValidateJWT(tokenString)
+        if err != nil {
+            return HandleError(c, 401, "Invalid token", "INVALID_TOKEN")
+        }
+
+        c.Locals("userID", claims.UserID)
+        return c.Next()
+    }
+}
+```
+
+## Connection Management API
+
+### Connection Test Endpoint
+```go
+func TestConnection(c *fiber.Ctx) error {
+    userID := c.Locals("userID").(string)
+
+    var req TestConnectionRequest
+    validator := validator.New()
+
+    parsedReq, err := ValidateAndParse[TestConnectionRequest](c, validator)
+    if err != nil {
+        return HandleError(c, 400, err.Error(), "VALIDATION_ERROR")
+    }
+    req = *parsedReq
+
+    // Test connection logic
+    success, message, err := connectionService.TestConnection(req)
+
+    if err != nil {
+        return HandleError(c, 500, "Connection test failed: "+err.Error(), "CONNECTION_TEST_FAILED")
+    }
+
+    return HandleSuccess(c, fiber.Map{
+        "success": success,
+        "message": message,
+    }, "Connection test completed")
+}
+```
+
+### Connection Creation Endpoint
+```go
+func CreateConnection(c *fiber.Ctx) error {
+    userID := c.Locals("userID").(string)
+
+    var req CreateConnectionRequest
+    validator := validator.New()
+
+    parsedReq, err := ValidateAndParse[CreateConnectionRequest](c, validator)
+    if err != nil {
+        return HandleError(c, 400, err.Error(), "VALIDATION_ERROR")
+    }
+    req = *parsedReq
+
+    // Check user connection limit
+    if err := poolManager.CheckUserLimit(userID); err != nil {
+        return HandleError(c, 429, err.Error(), "CONNECTION_LIMIT_EXCEEDED")
+    }
+
+    // Create connection
+    connectionID, err := connectionService.CreateConnection(userID, req)
+    if err != nil {
+        return HandleError(c, 500, "Failed to create connection: "+err.Error(), "CONNECTION_CREATION_FAILED")
+    }
+
+    return HandleSuccess(c, fiber.Map{
+        "connectionId": connectionID,
+    }, "Connection established successfully")
+}
+```
+
+## File Operations API
+
+### List Directory Endpoint
+```go
+func ListDirectory(c *fiber.Ctx) error {
+    userID := c.Locals("userID").(string)
+    connectionID := c.Query("connectionId")
+    path := c.Query("path", "/")
+
+    if connectionID == "" {
+        return HandleError(c, 400, "connectionId is required", "MISSING_CONNECTION_ID")
+    }
+
+    // Get client from pool
+    client, err := poolManager.GetClient(userID, connectionID)
+    if err != nil {
+        return HandleError(c, 400, "Invalid connection", "INVALID_CONNECTION")
+    }
+
+    // List directory
+    files, err := fileService.ListDirectory(client, path)
+    if err != nil {
+        return HandleError(c, 500, "Failed to list directory: "+err.Error(), "LIST_DIRECTORY_FAILED")
+    }
+
+    return HandleSuccess(c, fiber.Map{
+        "path":  path,
+        "files": files,
+    }, "Directory listed successfully")
+}
+```
+
+### File Upload Endpoint
+```go
+func UploadFile(c *fiber.Ctx) error {
+    userID := c.Locals("userID").(string)
+    connectionID := c.FormValue("connectionId")
+    remotePath := c.FormValue("path")
+
+    if connectionID == "" || remotePath == "" {
+        return HandleError(c, 400, "connectionId and path are required", "MISSING_PARAMETERS")
+    }
+
+    // Get uploaded file
+    file, err := c.FormFile("file")
+    if err != nil {
+        return HandleError(c, 400, "No file uploaded", "NO_FILE_UPLOADED")
+    }
+
+    // Check file size limit
+    if file.Size > config.MaxUploadSize {
+        return HandleError(c, 413, "File too large", "FILE_TOO_LARGE")
+    }
+
+    // Get client from pool
+    client, err := poolManager.GetClient(userID, connectionID)
+    if err != nil {
+        return HandleError(c, 400, "Invalid connection", "INVALID_CONNECTION")
+    }
+
+    // Upload file with progress tracking
+    transferID := generateTransferID()
+    go func() {
+        err := transferService.UploadFile(client, file, remotePath, transferID, userID)
+        if err != nil {
+            wsHub.BroadcastError(transferID, userID, err.Error())
+        }
+    }()
+
+    return HandleSuccess(c, fiber.Map{
+        "transferId": transferID,
+        "filename":   file.Filename,
+        "size":       file.Size,
+    }, "Upload started")
+}
+```
+
+## Error Code Standards
+
+### Common Error Codes
+```go
+const (
+    // Authentication errors
+    ERROR_MISSING_AUTH        = "MISSING_AUTH"
+    ERROR_INVALID_TOKEN       = "INVALID_TOKEN"
+    ERROR_INVALID_AUTH_FORMAT = "INVALID_AUTH_FORMAT"
+
+    // Validation errors
+    ERROR_VALIDATION_ERROR    = "VALIDATION_ERROR"
+    ERROR_MISSING_PARAMETERS  = "MISSING_PARAMETERS"
+
+    // Connection errors
+    ERROR_INVALID_CONNECTION      = "INVALID_CONNECTION"
+    ERROR_CONNECTION_TEST_FAILED  = "CONNECTION_TEST_FAILED"
+    ERROR_CONNECTION_CREATION_FAILED = "CONNECTION_CREATION_FAILED"
+    ERROR_CONNECTION_LIMIT_EXCEEDED   = "CONNECTION_LIMIT_EXCEEDED"
+
+    // File operation errors
+    ERROR_LIST_DIRECTORY_FAILED = "LIST_DIRECTORY_FAILED"
+    ERROR_FILE_NOT_FOUND        = "FILE_NOT_FOUND"
+    ERROR_FILE_TOO_LARGE        = "FILE_TOO_LARGE"
+    ERROR_NO_FILE_UPLOADED      = "NO_FILE_UPLOADED"
+
+    // Transfer errors
+    ERROR_UPLOAD_FAILED         = "UPLOAD_FAILED"
+    ERROR_DOWNLOAD_FAILED       = "DOWNLOAD_FAILED"
+)
+```
+
+## API Versioning
+
+### Versioning Strategy
+```go
+// Use URL versioning for major versions
+app.Get("/api/v1/connections", handlers.ListConnections)
+app.Get("/api/v1/files/list", handlers.ListFiles)
+app.Post("/api/v1/transfer/upload", handlers.UploadFile)
+
+// For breaking changes, increment version
+// v1: Initial API
+// v2: Enhanced with new features
+```
+
+## Rate Limiting
+
+### Rate Limiting Middleware
+```go
+func RateLimitMiddleware() fiber.Handler {
+    limiter := &RateLimiter{
+        requests: make(map[string][]time.Time),
+        window:   time.Minute,
+        maxRequests: 100, // per minute
+    }
+
+    return func(c *fiber.Ctx) error {
+        userID := c.Locals("userID").(string)
+        if !limiter.Allow(userID) {
+            return HandleError(c, 429, "Rate limit exceeded", "RATE_LIMIT_EXCEEDED")
+        }
+        return c.Next()
+    }
+}
+```
+
+These patterns ensure consistent, reliable, and maintainable API design across the Web-SCP application.

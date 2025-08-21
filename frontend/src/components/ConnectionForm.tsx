@@ -59,10 +59,8 @@ export function ConnectionForm() {
       const result = await apiClient.connect(formData)
 
       if (result.success && result.data) {
-        console.log('Connect API result:', result.data)
         // The response is double-nested: result.data.data contains the actual connection data
         const actualData = result.data.data || result.data
-        console.log('ConnectionId from API:', actualData.connectionId)
         
         const connection: Connection = {
           id: actualData.connectionId,
@@ -75,10 +73,8 @@ export function ConnectionForm() {
           lastConnected: new Date(),
         }
 
-        console.log('Connection object to store:', connection)
         addConnection(connection)
         setActiveConnection(connection)
-        console.log('Active connection set')
         setTestResult('✅ Connected successfully!')
         
         // Reset form

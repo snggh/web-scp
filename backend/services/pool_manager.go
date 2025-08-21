@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -14,6 +15,7 @@ type ConnectionPool struct {
 	mutex       sync.RWMutex
 	maxConns    int
 	timeout     time.Duration
+	id          string // Debug ID to track pool instances
 }
 
 type PooledConnection struct {
@@ -55,22 +57,22 @@ func NewPoolManager(config *PoolConfig) *PoolManager {
 }
 
 func (pm *PoolManager) GetPool(userSession string) *ConnectionPool {
-	pm.mutex.RLock()
-	pool, exists := pm.pools[userSession]
-	pm.mutex.RUnlock()
+	pm.mutex.Lock()
+	defer pm.mutex.Unlock()
+	
+	// Clean the session ID to prevent corruption
+	cleanSession := strings.TrimSpace(userSession)
+	
+	pool, exists := pm.pools[cleanSession]
 	
 	if !exists {
-		pm.mutex.Lock()
-		// Double-check pattern
-		if pool, exists = pm.pools[userSession]; !exists {
-			pool = &ConnectionPool{
-				connections: make(map[string]*PooledConnection),
-				maxConns:    pm.config.MaxConnectionsPerUser,
-				timeout:     pm.config.ConnectionTimeout,
-			}
-			pm.pools[userSession] = pool
+		pool = &ConnectionPool{
+			connections: make(map[string]*PooledConnection),
+			maxConns:    pm.config.MaxConnectionsPerUser,
+			timeout:     pm.config.ConnectionTimeout,
+			id:          fmt.Sprintf("pool-%d", time.Now().UnixNano()),
 		}
-		pm.mutex.Unlock()
+		pm.pools[cleanSession] = pool
 	}
 	
 	return pool
@@ -110,6 +112,7 @@ func (pm *PoolManager) CreateConnection(ctx context.Context, userSession, connID
 	
 	// Establish actual connection based on protocol
 	var err error
+	
 	switch config.Protocol {
 	case models.SFTP:
 		pooledConn.Client, err = pm.createSFTPConnection(ctx, config)
@@ -277,11 +280,15 @@ func (pm *PoolManager) closeConnection(conn *PooledConnection) error {
 	switch conn.Protocol {
 	case models.SFTP:
 		if sftpClient, ok := conn.Client.(*SFTPClient); ok {
+			fmt.Printf("Closing SFTP connection: %s\n", conn.ID)
 			return sftpClient.Close()
+		} else {
+			fmt.Printf("SFTP type assertion failed for connection: %s, Type: %T\n", conn.ID, conn.Client)
 		}
 	case models.FTP:
-		if ftpClient, ok := conn.Client.(*FTPClient); ok {
-			return ftpClient.Close()
+		// Note: FTPClient type needs to be implemented in ftp_service.go
+		if closer, ok := conn.Client.(interface{ Close() error }); ok {
+			return closer.Close()
 		}
 	}
 	

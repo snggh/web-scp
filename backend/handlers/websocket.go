@@ -10,6 +10,7 @@ import (
 	"github.com/gofiber/contrib/websocket"
 
 	"github.com/user/web-scp/models"
+	"github.com/user/web-scp/transfer"
 )
 
 type Client struct {
@@ -274,3 +275,10 @@ func (h *Hub) HandleWebSocket(c *fiber.Ctx) error {
 }
 
 var GlobalHub = NewHub()
+
+// Initialize transfer manager with progress callback
+func init() {
+	transfer.GlobalTransferManager.SetProgressCallback(func(userSession string, progress models.TransferProgress) {
+		GlobalHub.BroadcastToUser(userSession, "transfer_progress", progress)
+	})
+}

@@ -30,3 +30,19 @@ export interface TransferItem {
   remainingTime?: number
   error?: string
 }
+
+export interface TransferProgress {
+  id: string
+  type: 'upload' | 'download'
+  fileName: string
+  progress: number
+  speed?: number
+  remainingTime?: number
+  status: 'transferring' | 'completed' | 'error'
+  error?: string
+}
+
+export interface WSMessage {
+  type: string
+  data: any
+}

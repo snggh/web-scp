@@ -253,6 +253,15 @@ func (c *SFTPClient) ChangeDirectory(path string) error {
 	return nil
 }
 
+// GetFileStat returns file statistics for the given path
+func (c *SFTPClient) GetFileStat(path string) (os.FileInfo, error) {
+	stat, err := c.sftpClient.Stat(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to stat file: %w", err)
+	}
+	return stat, nil
+}
+
 func (c *SFTPClient) Close() error {
 	var sftpErr, sshErr error
 	
@@ -294,12 +303,18 @@ func (s *SFTPService) loadPrivateKey(keyPath, passphrase string) (ssh.Signer, er
 	return signer, nil
 }
 
-// resolveHost translates localhost addresses to work within Docker containers
+// resolveHost translates localhost addresses appropriately for the environment
 func (s *SFTPService) resolveHost(host string) string {
-	// When running in Docker, localhost/127.0.0.1 refers to the container itself
-	// We need to use host.docker.internal to reach the host machine
+	// For local development, keep localhost as-is
+	// For Docker environment, translate to host.docker.internal
+	// This can be improved with environment detection
 	if host == "localhost" || host == "127.0.0.1" || host == "0.0.0.0" {
-		return "host.docker.internal"
+		// Check if we're in Docker by looking for .dockerenv file
+		if _, err := os.Stat("/.dockerenv"); err == nil {
+			return "host.docker.internal"
+		}
+		// Local development - keep localhost
+		return host
 	}
 	return host
 }

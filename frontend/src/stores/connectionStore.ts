@@ -1,15 +1,21 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { Connection } from '@/types'
+import { Connection, TransferItem, TransferProgress } from '@/types'
 
 interface ConnectionStore {
   connections: Connection[]
   activeConnection: Connection | null
+  transfers: TransferItem[]
   addConnection: (connection: Connection) => void
   removeConnection: (id: string) => void
   updateConnection: (id: string, updates: Partial<Connection>) => void
   setActiveConnection: (connection: Connection | null) => void
   loadPersistedConnections: () => void
+  // Transfer management
+  addTransfer: (transfer: TransferItem) => void
+  updateTransferProgress: (progress: TransferProgress) => void
+  removeTransfer: (id: string) => void
+  clearCompletedTransfers: () => void
 }
 
 export const useConnectionStore = create<ConnectionStore>()(
@@ -17,8 +23,8 @@ export const useConnectionStore = create<ConnectionStore>()(
     (set, get) => ({
       connections: [],
       activeConnection: null,
+      transfers: [],
       addConnection: (connection) => {
-        console.log('Adding connection to store:', connection)
         set((state) => ({
           connections: [...state.connections, connection],
         }))
@@ -39,13 +45,45 @@ export const useConnectionStore = create<ConnectionStore>()(
               : state.activeConnection,
         })),
       setActiveConnection: (connection) => {
-        console.log('Setting active connection:', connection)
         set({ activeConnection: connection })
       },
       loadPersistedConnections: () => {
         // This will be called to restore persisted state
         const state = get()
-        console.log('Loaded persisted connections:', state.connections)
+      },
+      // Transfer management methods
+      addTransfer: (transfer) => {
+        set((state) => ({
+          transfers: [...state.transfers, transfer],
+        }))
+      },
+      updateTransferProgress: (progress) => {
+        set((state) => ({
+          transfers: state.transfers.map((transfer) =>
+            transfer.id === progress.id
+              ? {
+                  ...transfer,
+                  progress: progress.progress,
+                  status: progress.status as TransferItem['status'],
+                  speed: progress.speed,
+                  remainingTime: progress.remainingTime,
+                  error: progress.error,
+                }
+              : transfer
+          ),
+        }))
+      },
+      removeTransfer: (id) => {
+        set((state) => ({
+          transfers: state.transfers.filter((transfer) => transfer.id !== id),
+        }))
+      },
+      clearCompletedTransfers: () => {
+        set((state) => ({
+          transfers: state.transfers.filter(
+            (transfer) => transfer.status !== 'completed' && transfer.status !== 'error'
+          ),
+        }))
       },
     }),
     {
@@ -55,10 +93,7 @@ export const useConnectionStore = create<ConnectionStore>()(
         activeConnection: state.activeConnection,
       }),
       onRehydrateStorage: () => (state) => {
-        if (state) {
-          console.log('Rehydrated connections:', state.connections)
-          console.log('Rehydrated active connection:', state.activeConnection)
-        }
+        // Silent rehydration
       },
     }
   )

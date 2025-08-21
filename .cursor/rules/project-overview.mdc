@@ -1,0 +1,73 @@
+---
+alwaysApply: true
+description: Core project overview and architecture for Web-SCP
+---
+
+# Web-SCP Project Overview
+
+## Project Description
+Web-SCP is a modern, web-based file transfer application similar to WinSCP but for the browser. It supports both FTP and SFTP protocols with real-time progress tracking via WebSocket connections. The application uses streaming file transfers without backend storage for efficient memory usage.
+
+## Architecture Overview
+
+### Backend (Go with Fiber)
+- **Entry Point**: [backend/main.go](mdc:backend/main.go) - Fiber web server with API routes and middleware
+- **Configuration**: [backend/config/config.go](mdc:backend/config/config.go) - Environment-based configuration loader
+- **Models**: [backend/models/types.go](mdc:backend/models/types.go) - Shared data structures and API types
+- **Connection Management**: Connection pooling for FTP/SFTP sessions with timeout handling
+- **WebSocket Hub**: [backend/handlers/websocket.go](mdc:backend/handlers/websocket.go) - Real-time progress updates
+- **State Management**: In-memory connection and transfer tracking (no database)
+
+### Frontend (React + TypeScript)
+- **State Management**: Zustand for client state ([frontend/src/stores/connectionStore.ts](mdc:frontend/src/stores/connectionStore.ts))
+- **UI Framework**: React + Tailwind CSS + Shadcn/ui components
+- **Build Tool**: Vite with TypeScript
+- **Key Components**: ConnectionForm, FileExplorer (dual-pane), TransferQueue
+- **API Integration**: TanStack Query for server state management
+
+## Key Architectural Patterns
+- **Streaming I/O**: File transfers use `io.Copy` to stream data directly between client and remote server without backend storage
+- **Connection Pooling**: Multiple concurrent connections managed per user with configurable limits
+- **Real-time Updates**: WebSocket-based progress tracking for file operations
+- **Protocol Abstraction**: Common interface for FTP and SFTP operations
+
+## Tech Stack
+- **Backend**: Go 1.23, Fiber, Gorilla WebSocket, pkg/sftp, jlaffaye/ftp, golang-jwt/jwt
+- **Frontend**: React 18 + TypeScript, Vite, TanStack Query, Zustand, Tailwind CSS, Shadcn/ui
+- **Development**: Docker, docker-compose for local development environment
+
+## Development Environment
+- **Backend Port**: 3000
+- **Frontend Port**: 5173
+- **Test SFTP Server**: localhost:2222 (testuser/testpass)
+- **WebSocket Path**: /ws
+
+## Project Status
+- ✅ Basic project structure and setup
+- ✅ Backend API with Fiber
+- ✅ Frontend with React/TypeScript
+- ✅ WebSocket connection established
+- ✅ SFTP connection service implementation
+- ✅ Connection pooling with timeout management
+- ✅ Frontend connection form with validation
+- ✅ **Connection persistence and stability**
+- ✅ **Complete file operations (list, navigate, create, update, delete directories)**
+- ✅ **Stable SFTP connection management**
+- ✅ **Complete file upload/download and transfer system**
+- ✅ **Real-time transfer progress tracking with WebSocket**
+- ✅ **Drag & drop file upload interface**
+- ✅ **FTP and SFTP protocol support**
+
+## Critical Issues Fixed
+- ✅ **Connection Persistence**: Fixed frontend API proxy routing to hit backend properly
+- ✅ **Session Management**: Fixed X-Session-ID header handling between frontend and backend
+- ✅ **CORS Configuration**: Added X-Session-ID to allowed headers
+- ✅ **Environment Detection**: Fixed localhost resolution for Docker vs local development
+- ✅ **Session ID Corruption**: Fixed session ID corruption causing multiple pools per session (race condition)
+- ✅ **Pool Map Integrity**: Implemented session ID cleaning to prevent map key corruption
+- ✅ **Connection Pool Stability**: Resolved non-deterministic pool retrieval causing "Connection not found" errors
+- ✅ **Backend Compilation**: Fixed missing `os` import causing container startup failure
+- ✅ **WebSocket Proxy**: Fixed Vite proxy configuration for proper backend connection routing
+- ✅ **File Download**: Fixed binary data parsing issue for proper file downloads
+
+Always maintain consistency with these architectural decisions and development patterns.

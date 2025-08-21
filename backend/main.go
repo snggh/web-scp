@@ -30,8 +30,8 @@ func main() {
 	// Initialize services
 	poolConfig := &services.PoolConfig{
 		MaxConnectionsPerUser: cfg.MaxConnectionsPerUser,
-		ConnectionTimeout:     cfg.ConnectionTimeout,
-		CleanupInterval:       5 * time.Minute,
+		ConnectionTimeout:     30 * time.Minute, // Extended for debugging
+		CleanupInterval:       2 * time.Minute,  // More frequent cleanup for debugging
 	}
 	services.InitPoolManager(poolConfig)
 
@@ -67,7 +67,7 @@ func main() {
 	app.Use(cors.New(cors.Config{
 		AllowOrigins:     getEnv("CORS_ORIGINS", "http://localhost:5173"),
 		AllowMethods:     "GET,POST,PUT,DELETE,OPTIONS",
-		AllowHeaders:     "Origin,Content-Type,Accept,Authorization",
+		AllowHeaders:     "Origin,Content-Type,Accept,Authorization,X-Session-ID",
 		AllowCredentials: true,
 	}))
 
@@ -108,18 +108,9 @@ func main() {
 
 	// Transfer routes
 	transfer := api.Group("/transfer")
-	transfer.Post("/upload", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{"message": "Transfer upload endpoint"})
-	})
-	transfer.Get("/download", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{"message": "Transfer download endpoint"})
-	})
-	transfer.Get("/queue", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{"message": "Transfer queue endpoint"})
-	})
-	transfer.Delete("/:id", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{"message": "Transfer cancel endpoint"})
-	})
+	transfer.Use(handlers.GlobalAuthHandler.OptionalAuthMiddleware) // Allow both authenticated and anonymous access for testing
+	transfer.Post("/upload", handlers.GlobalFileHandler.UploadFile)
+	transfer.Post("/download", handlers.GlobalFileHandler.DownloadFile)
 
 	// WebSocket route
 	app.Get("/ws", handlers.GlobalHub.HandleWebSocket)

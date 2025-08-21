@@ -29,6 +29,10 @@ services:
       dockerfile: Dockerfile
     ports:
       - "5173:5173"
+    environment:
+      - BACKEND_URL=http://backend:3000
+      - WS_URL=ws://backend:3000
+      - DOCKER_ENV=true
     volumes:
       - ./frontend:/app
       - /app/node_modules
