@@ -1,0 +1,86 @@
+---
+globs: *.go
+description: Go backend development patterns and best practices for Web-SCP
+---
+
+# Go Backend Development Guidelines
+
+## Error Handling
+Always return structured `APIResponse` with success/error fields:
+```go
+type APIResponse struct {
+    Success bool        `json:"success"`
+    Data    interface{} `json:"data,omitempty"`
+    Error   string      `json:"error,omitempty"`
+    Message string      `json:"message,omitempty"`
+}
+```
+
+## Resource Management
+- **Always use `defer` for connection cleanup**: `defer client.Close()`
+- **Use `defer` for file closing**: `defer file.Close()`
+- **Implement proper mutex locking** for connection pool management
+- **Use `context.Context` for request cancellation and timeouts**
+
+## Streaming Implementation
+- **Use `io.Copy` and `io.Pipe` for memory-efficient file transfers**
+- **Never store entire files in memory** - always use streaming
+- **Implement chunked processing** for large files with progress tracking
+
+## Connection Pool Management
+```go
+type PoolManager struct {
+    connections map[string]interface{} // connection ID to client
+    mutex       sync.RWMutex          // thread safety
+    maxConnections int                // per user limit
+    timeout     time.Duration         // idle timeout
+}
+```
+
+## Development Best Practices
+
+### Backend Development (Go)
+- **Error Handling**: Always return structured APIResponse with success/error fields
+- **Resource Management**: Use `defer` for connection cleanup and file closing
+- **Concurrency**: Implement proper mutex locking for connection pool management
+- **Streaming**: Use `io.Copy` and `io.Pipe` for memory-efficient file transfers
+- **Context**: Use `context.Context` for request cancellation and timeouts
+- **Validation**: Use `go-playground/validator` for input validation on all API endpoints
+- **Logging**: Use structured logging with operation context (connection ID, transfer ID)
+
+### Key Implementation Patterns
+
+1. **Connection Lifecycle**:
+   - Test connections before establishing
+   - Pool active connections with automatic cleanup
+   - Thread-safe connection tracking per user session
+
+2. **File Transfer Protocol**:
+   - `POST /api/transfer/upload` - Streaming upload with progress tracking
+   - `GET /api/transfer/download` - Streaming download
+   - WebSocket broadcasts for real-time progress updates
+   - Transfer queue management with pause/cancel support
+
+3. **Progress Tracking**:
+   - Update progress via WebSocket with throttling (max 10 updates/sec)
+   - Implement retry logic for network interruptions
+   - Support transfer cancellation with proper cleanup
+
+4. **Security**:
+   - JWT authentication, no credential persistence
+   - Encrypted connections for SFTP
+   - Validate file types and sizes before transfer
+
+## Code Organization
+- **Handlers**: API endpoint implementations
+- **Services**: Business logic (FTP/SFTP clients, pool manager)
+- **Models**: Type definitions and data structures
+- **Middleware**: Authentication, CORS, validation
+- **Utils**: Helper functions and utilities
+
+## Testing Strategy
+- **Unit Tests**: Test connection pooling, file operations, and state management
+- **Integration Tests**: Test with real SFTP server (use Docker test server)
+- **WebSocket Tests**: Mock WebSocket connections for progress updates
+- **Error Scenarios**: Test connection failures, network interruptions, large files
+- **Performance Tests**: Verify memory usage during large file transfers

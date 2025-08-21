@@ -1,0 +1,413 @@
+---
+alwaysApply: false
+description: Security best practices and implementation patterns for Web-SCP
+---
+
+# Security Best Practices
+
+## Authentication and Authorization
+
+### JWT Implementation
+```go
+type JWTClaims struct {
+    UserID   string    `json:"userId"`
+    Username string    `json:"username"`
+    Role     string    `json:"role,omitempty"`
+    Exp      time.Time `json:"exp"`
+}
+
+func GenerateJWT(userID, username string) (string, error) {
+    expirationTime := time.Now().Add(24 * time.Hour)
+    claims := &JWTClaims{
+        UserID:   userID,
+        Username: username,
+        Exp:      expirationTime,
+    }
+
+    token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+    return token.SignedString([]byte(config.JWT_SECRET))
+}
+
+func ValidateJWT(tokenString string) (*JWTClaims, error) {
+    claims := &JWTClaims{}
+
+    token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+        if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+            return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+        }
+        return []byte(config.JWT_SECRET), nil
+    })
+
+    if err != nil {
+        return nil, err
+    }
+
+    if !token.Valid {
+        return nil, fmt.Errorf("invalid token")
+    }
+
+    return claims, nil
+}
+```
+
+### Password Security
+```go
+// Never store plain text passwords
+// Use bcrypt for password hashing in database scenarios
+func HashPassword(password string) (string, error) {
+    bytes, err := bcrypt.GenerateFromPassword([]byte(password), 14)
+    return string(bytes), err
+}
+
+func CheckPasswordHash(password, hash string) bool {
+    err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
+    return err == nil
+}
+```
+
+## Connection Security
+
+### SFTP Connection Security
+```go
+func CreateSecureSFTPConnection(host string, port int, username, password string) (*sftp.Client, error) {
+    // Use SSH key authentication when possible
+    config := &ssh.ClientConfig{
+        User: username,
+        Auth: []ssh.AuthMethod{
+            ssh.Password(password), // Fallback to password
+            // ssh.PublicKeys(key), // Preferred method
+        },
+        HostKeyCallback: ssh.InsecureIgnoreHostKey(), // In production, use proper host key verification
+        Timeout: 30 * time.Second,
+    }
+
+    // For production, implement proper host key verification
+    hostKeyCallback := func(hostname string, remote net.Addr, key ssh.PublicKey) error {
+        // Verify against known hosts
+        return nil
+    }
+
+    addr := fmt.Sprintf("%s:%d", host, port)
+    conn, err := ssh.Dial("tcp", addr, config)
+    if err != nil {
+        return nil, fmt.Errorf("failed to connect: %w", err)
+    }
+
+    client, err := sftp.NewClient(conn)
+    if err != nil {
+        conn.Close()
+        return nil, fmt.Errorf("failed to create SFTP client: %w", err)
+    }
+
+    return client, nil
+}
+```
+
+### FTP Connection Security
+```go
+func CreateSecureFTPConnection(host string, port int, username, password string) (*ftp.ServerConn, error) {
+    // Use FTPS (FTP over TLS) when possible
+    conn, err := ftp.Dial(fmt.Sprintf("%s:%d", host, port))
+    if err != nil {
+        return nil, err
+    }
+
+    // Enable TLS if supported
+    if err := conn.StartTLS(&tls.Config{InsecureSkipVerify: false}); err != nil {
+        // TLS not supported, continue with plain FTP
+        log.Printf("TLS not supported, continuing with plain FTP")
+    }
+
+    err = conn.Login(username, password)
+    if err != nil {
+        conn.Quit()
+        return nil, err
+    }
+
+    return conn, nil
+}
+```
+
+## Input Validation and Sanitization
+
+### File Path Security
+```go
+func SanitizeFilePath(path string) (string, error) {
+    // Prevent directory traversal attacks
+    clean := filepath.Clean(path)
+
+    // Ensure path doesn't go outside allowed directories
+    if strings.Contains(clean, "..") {
+        return "", fmt.Errorf("invalid path: directory traversal detected")
+    }
+
+    // Remove any null bytes
+    clean = strings.ReplaceAll(clean, "\x00", "")
+
+    // Validate path length
+    if len(clean) > 4096 {
+        return "", fmt.Errorf("path too long")
+    }
+
+    return clean, nil
+}
+```
+
+### File Name Security
+```go
+func SanitizeFileName(filename string) (string, error) {
+    // Remove potentially dangerous characters
+    dangerous := []string{"/", "\\", "..", "<", ">", ":", "\"", "|", "?", "*"}
+
+    clean := filename
+    for _, char := range dangerous {
+        clean = strings.ReplaceAll(clean, char, "_")
+    }
+
+    // Remove leading/trailing whitespace
+    clean = strings.TrimSpace(clean)
+
+    // Remove null bytes and control characters
+    clean = strings.Map(func(r rune) rune {
+        if r < 32 || r == 127 {
+            return -1
+        }
+        return r
+    }, clean)
+
+    // Validate length
+    if len(clean) == 0 || len(clean) > 255 {
+        return "", fmt.Errorf("invalid filename length")
+    }
+
+    return clean, nil
+}
+```
+
+## File Upload Security
+
+### File Type Validation
+```go
+var AllowedMimeTypes = map[string]bool{
+    "text/plain":               true,
+    "text/csv":                 true,
+    "application/pdf":          true,
+    "application/json":         true,
+    "application/zip":          true,
+    "image/jpeg":               true,
+    "image/png":                true,
+    "image/gif":                true,
+    // Add more as needed
+}
+
+func ValidateFileType(header *multipart.FileHeader) error {
+    // Check MIME type
+    mimeType := header.Header.Get("Content-Type")
+    if !AllowedMimeTypes[mimeType] {
+        return fmt.Errorf("file type not allowed: %s", mimeType)
+    }
+
+    // Additional validation: check file extension
+    ext := strings.ToLower(filepath.Ext(header.Filename))
+    allowedExts := []string{".txt", ".csv", ".pdf", ".json", ".zip", ".jpg", ".jpeg", ".png", ".gif"}
+
+    for _, allowedExt := range allowedExts {
+        if ext == allowedExt {
+            return nil
+        }
+    }
+
+    return fmt.Errorf("file extension not allowed: %s", ext)
+}
+```
+
+### File Size Limits
+```go
+func ValidateFileSize(size int64, maxSize int64) error {
+    if size <= 0 {
+        return fmt.Errorf("file is empty")
+    }
+
+    if size > maxSize {
+        return fmt.Errorf("file too large: %d bytes (max: %d bytes)", size, maxSize)
+    }
+
+    return nil
+}
+```
+
+## Rate Limiting and DoS Protection
+
+### Connection Rate Limiting
+```go
+type RateLimiter struct {
+    requests map[string][]time.Time
+    window   time.Duration
+    maxRequests int
+    mutex    sync.RWMutex
+}
+
+func (rl *RateLimiter) Allow(key string) bool {
+    rl.mutex.Lock()
+    defer rl.mutex.Unlock()
+
+    now := time.Now()
+    windowStart := now.Add(-rl.window)
+
+    // Clean old requests
+    if requests, exists := rl.requests[key]; exists {
+        var validRequests []time.Time
+        for _, req := range requests {
+            if req.After(windowStart) {
+                validRequests = append(validRequests, req)
+            }
+        }
+        rl.requests[key] = validRequests
+    }
+
+    // Check if under limit
+    if len(rl.requests[key]) < rl.maxRequests {
+        rl.requests[key] = append(rl.requests[key], now)
+        return true
+    }
+
+    return false
+}
+```
+
+## Session Management
+
+### Session Security
+```go
+type SessionManager struct {
+    sessions map[string]*Session
+    mutex    sync.RWMutex
+}
+
+type Session struct {
+    ID        string
+    UserID    string
+    CreatedAt time.Time
+    LastSeen  time.Time
+    IP        string
+    UserAgent string
+}
+
+func (sm *SessionManager) CreateSession(userID, ip, userAgent string) string {
+    sessionID := generateSecureID()
+
+    session := &Session{
+        ID:        sessionID,
+        UserID:    userID,
+        CreatedAt: time.Now(),
+        LastSeen:  time.Now(),
+        IP:        ip,
+        UserAgent: userAgent,
+    }
+
+    sm.mutex.Lock()
+    sm.sessions[sessionID] = session
+    sm.mutex.Unlock()
+
+    return sessionID
+}
+
+func (sm *SessionManager) ValidateSession(sessionID, ip, userAgent string) (*Session, error) {
+    sm.mutex.RLock()
+    session, exists := sm.sessions[sessionID]
+    sm.mutex.RUnlock()
+
+    if !exists {
+        return nil, fmt.Errorf("session not found")
+    }
+
+    // Check IP consistency for additional security
+    if session.IP != ip {
+        return nil, fmt.Errorf("IP mismatch")
+    }
+
+    // Update last seen
+    sm.mutex.Lock()
+    session.LastSeen = time.Now()
+    sm.mutex.Unlock()
+
+    return session, nil
+}
+```
+
+## CORS Security
+
+### Secure CORS Configuration
+```go
+func SetupCORS() fiber.Handler {
+    return cors.New(cors.Config{
+        AllowOrigins:     config.AllowedOrigins,
+        AllowMethods:     "GET,POST,PUT,DELETE,OPTIONS",
+        AllowHeaders:     "Origin,Content-Type,Accept,Authorization",
+        AllowCredentials: true,
+        MaxAge:           300, // 5 minutes
+    })
+}
+```
+
+## Security Headers
+
+### Security Headers Middleware
+```go
+func SecurityHeaders() fiber.Handler {
+    return func(c *fiber.Ctx) error {
+        // Prevent clickjacking
+        c.Set("X-Frame-Options", "DENY")
+
+        // Prevent MIME type sniffing
+        c.Set("X-Content-Type-Options", "nosniff")
+
+        // Enable XSS protection
+        c.Set("X-XSS-Protection", "1; mode=block")
+
+        // Strict transport security (for HTTPS)
+        c.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+
+        // Content security policy
+        c.Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'")
+
+        return c.Next()
+    }
+}
+```
+
+## Logging and Monitoring
+
+### Security Event Logging
+```go
+type SecurityLogger struct {
+    logFile *os.File
+    mutex   sync.Mutex
+}
+
+type SecurityEvent struct {
+    Timestamp time.Time `json:"timestamp"`
+    EventType string    `json:"eventType"`
+    UserID    string    `json:"userId,omitempty"`
+    IP        string    `json:"ip"`
+    Details   string    `json:"details"`
+    Severity  string    `json:"severity"`
+}
+
+func (sl *SecurityLogger) LogSecurityEvent(event SecurityEvent) {
+    sl.mutex.Lock()
+    defer sl.mutex.Unlock()
+
+    event.Timestamp = time.Now()
+    jsonData, _ := json.Marshal(event)
+
+    // Log to file
+    sl.logFile.WriteString(string(jsonData) + "\n")
+    sl.logFile.Sync()
+
+    // In production, also send to monitoring system
+    // monitoring.SendSecurityAlert(event)
+}
+```
+
+These security patterns ensure the Web-SCP application handles sensitive operations safely and maintains user data protection.

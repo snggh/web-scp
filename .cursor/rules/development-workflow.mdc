@@ -1,0 +1,207 @@
+---
+alwaysApply: false
+description: Development workflow, testing, and deployment guidelines
+---
+
+# Development Workflow and Testing
+
+## Development Commands
+
+### Backend (Go)
+```bash
+cd backend
+
+# Start development server
+go run main.go
+
+# Install dependencies
+go mod download
+
+# Clean up dependencies
+go mod tidy
+
+# Build binary
+go build -o web-scp main.go
+
+# Run tests
+go test ./...
+
+# Format code
+go fmt ./...
+```
+
+### Frontend (React)
+```bash
+cd frontend
+
+# Start development server (Vite)
+npm run dev
+
+# Build for production
+npm run build
+
+# Preview production build
+npm run preview
+
+# Lint code (if configured)
+npm run lint
+
+# Install dependencies
+npm install
+```
+
+### Docker Development
+```bash
+# Full environment with test SFTP server
+docker-compose up
+
+# Start in background
+docker-compose up -d
+
+# Stop services
+docker-compose down
+```
+
+## Development Workflow
+
+### When Implementing New Features
+1. **Start with `backend/models/types.go`** for shared data structures
+2. **Add backend handlers** following existing API patterns
+3. **Update connection pool management** if needed
+4. **Implement frontend components** with TypeScript interfaces
+5. **Use WebSocket hub** for real-time updates
+6. **Test with included SFTP server** on port 2222
+
+### Code Organization Flow
+```
+1. models/types.go      # Define data structures
+2. handlers/            # API endpoints
+3. services/           # Business logic
+4. middleware/         # Cross-cutting concerns
+5. frontend/           # UI implementation
+6. Testing            # Verify functionality
+```
+
+## Testing Strategy
+
+### Backend Testing
+- **Unit Tests**: Test connection pooling, file operations, and state management
+- **Integration Tests**: Test with real SFTP server (use Docker test server)
+- **WebSocket Tests**: Mock WebSocket connections for progress updates
+- **Error Scenarios**: Test connection failures, network interruptions, large files
+- **Performance Tests**: Verify memory usage during large file transfers
+
+### Frontend Testing
+- **Component Tests**: React Testing Library for UI components
+- **Hook Tests**: Test custom hooks (useWebSocket, useFileTransfer)
+- **Integration Tests**: Test API interactions and state management
+- **WebSocket Mocking**: Simulate real-time progress updates
+
+### Test SFTP Server
+- **Host**: `localhost:2222`
+- **Credentials**: `testuser:testpass`
+- **Upload directory**: `./test-data`
+- **Use for**: Development testing, integration tests, debugging
+
+## Environment Configuration
+
+### Backend Environment Variables
+```env
+PORT=3000
+JWT_SECRET=your-secret-key-here
+MAX_CONNECTIONS_PER_USER=5
+CONNECTION_TIMEOUT_MINUTES=15
+MAX_UPLOAD_SIZE_MB=5000
+CORS_ORIGINS=http://localhost:5173
+WS_PATH=/ws
+```
+
+### Frontend Environment Variables
+```env
+VITE_API_BASE_URL=http://localhost:3000
+VITE_WS_URL=ws://localhost:3000/ws
+```
+
+## API Endpoints
+
+### Authentication
+- `POST /api/auth/login` - Create session
+
+### Connections
+- `POST /api/connections/test` - Test connection
+- `POST /api/connections/connect` - Establish connection
+- `DELETE /api/connections/:id` - Disconnect
+
+### File Operations
+- `GET /api/files/list` - List directory contents
+- `POST /api/files/mkdir` - Create directory
+- `DELETE /api/files/delete` - Delete file/folder
+- `PUT /api/files/rename` - Rename file/folder
+
+### Transfer Operations
+- `POST /api/transfer/upload` - Stream upload
+- `GET /api/transfer/download` - Stream download
+- `GET /api/transfer/queue` - Get transfer queue
+- `DELETE /api/transfer/:id` - Cancel transfer
+
+### WebSocket
+- `WS /ws` - Real-time progress updates
+
+## Deployment
+
+### Docker Deployment
+```bash
+# Build images
+docker-compose build
+
+# Deploy with environment
+docker-compose -f docker-compose.prod.yml up -d
+
+# View logs
+docker-compose logs -f
+```
+
+### Production Considerations
+- **Use strong JWT secrets** in production
+- **SFTP keys over passwords** when possible
+- **Configure proper CORS origins**
+- **Set appropriate connection limits**
+- **Monitor memory usage** during large transfers
+- **Implement proper logging** and monitoring
+
+## Debugging Tips
+
+### Backend Debugging
+- **Check backend logs** for detailed error messages
+- **Use connection pool status endpoint** for debugging
+- **Monitor WebSocket connections** and message flow
+- **Test with simple SFTP client** first (FileZilla, etc.)
+
+### Frontend Debugging
+- **Use browser developer tools** to inspect WebSocket messages
+- **Monitor network tab** for API request/response debugging
+- **Check React DevTools** for component state
+- **Test WebSocket reconnection** logic
+
+### Common Issues
+1. **Go command not found** - Ensure Go is installed and in PATH
+2. **Port already in use** - Change PORT in `.env` file
+3. **WebSocket connection failed** - Check CORS configuration
+4. **SFTP connection failed** - Verify credentials and server details
+
+## Performance Monitoring
+
+### Key Metrics to Track
+- **Connection pool usage** (active vs idle connections)
+- **Memory usage** during file transfers
+- **Transfer speeds** and throughput
+- **WebSocket message frequency**
+- **API response times**
+- **Error rates** by endpoint
+
+### Performance Optimization
+- **Connection pooling** reduces overhead
+- **Streaming transfers** minimize memory usage
+- **WebSocket throttling** prevents message flooding
+- **Chunked processing** for large files
+- **Lazy loading** for UI components

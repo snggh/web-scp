@@ -1,0 +1,100 @@
+---
+globs: *.tsx,*.ts
+description: React frontend development patterns and best practices for Web-SCP
+---
+
+# React Frontend Development Guidelines
+
+## TypeScript Best Practices
+- **Strict TypeScript interfaces** for all API responses
+- **Define comprehensive types** for file operations, connections, and transfers
+- **Use proper null/undefined handling** with optional chaining
+
+## State Management
+- **Zustand for client state**: Use [frontend/src/stores/connectionStore.ts](mdc:frontend/src/stores/connectionStore.ts)
+- **TanStack Query for server state**: API calls and caching
+- **React Query patterns**:
+  ```typescript
+  // Connection management
+  const useConnections = () => {
+    return useQuery({
+      queryKey: ['connections'],
+      queryFn: api.getConnections,
+      staleTime: 30000,
+    });
+  };
+  ```
+
+## Component Architecture
+- **Functional components with hooks**
+- **React.memo for expensive components** (file lists)
+- **Custom hooks for reusable logic** (useWebSocket, useFileTransfer)
+
+## WebSocket Integration
+```typescript
+// Custom WebSocket hook pattern
+const useWebSocket = () => {
+  // Connect to WebSocket
+  // Handle progress messages
+  // Update transfer queue state
+  // Implement reconnection logic
+};
+```
+
+## File Handling
+- **FileReader API for client-side file preview and validation**
+- **Drag-and-drop support** with react-dropzone
+- **Stream processing** for large file uploads
+
+## UI/UX Patterns
+- **Error boundaries** for file transfer components
+- **Immediate feedback** for all user actions with loading states
+- **Responsive design** that works on desktop and tablet
+- **Accessibility support** with proper ARIA labels
+
+## Development Best Practices
+
+### Frontend Development (React + TypeScript)
+- **Type Safety**: Define strict TypeScript interfaces for all API responses
+- **State Management**: Use Zustand for client state, TanStack Query for server state
+- **Error Boundaries**: Implement error boundaries for file transfer components
+- **WebSocket Management**: Always handle connection state and implement reconnection logic
+- **Performance**: Use React.memo for expensive file list components
+- **UI Feedback**: Provide immediate feedback for all user actions with loading states
+- **File Handling**: Use FileReader API for client-side file preview and validation
+
+### Component Structure
+```
+components/
+├── ConnectionForm.tsx    # Connection management
+├── FileExplorer.tsx     # Dual-pane file browser
+├── TransferQueue.tsx    # Transfer progress display
+└── ui/                  # Reusable UI components
+    ├── button.tsx
+    ├── card.tsx
+    ├── input.tsx
+    └── label.tsx
+```
+
+### Key Hooks
+- **useWebSocket**: WebSocket connection and real-time updates
+- **useFileTransfer**: File upload/download operations
+- **useConnection**: Connection state management
+
+## API Integration
+- **Consistent error handling** across all API calls
+- **Request/response interceptors** for authentication
+- **Retry logic** for failed requests
+- **Request cancellation** for long-running operations
+
+## Testing Patterns
+- **Component tests** with React Testing Library
+- **Hook tests** for custom logic
+- **Integration tests** for API interactions
+- **WebSocket mocking** for progress updates
+
+## Performance Considerations
+- **Virtualization** for large file lists
+- **Memoization** for expensive computations
+- **Lazy loading** for non-critical components
+- **Bundle splitting** for better loading performance
