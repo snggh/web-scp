@@ -20,26 +20,64 @@ export interface ApiResponse<T> {
 }
 
 class ApiClient {
+  private sessionId: string | null = null
+
+  setSessionId(sessionId: string) {
+    this.sessionId = sessionId
+    // Store in localStorage for persistence
+    localStorage.setItem('web-scp-session-id', sessionId)
+  }
+
+  getSessionId(): string | null {
+    if (!this.sessionId) {
+      // Try to restore from localStorage
+      this.sessionId = localStorage.getItem('web-scp-session-id')
+    }
+    return this.sessionId
+  }
+
+  clearSession() {
+    this.sessionId = null
+    localStorage.removeItem('web-scp-session-id')
+  }
+
   private async request<T>(
     endpoint: string,
     options: RequestInit = {}
   ): Promise<ApiResponse<T>> {
     try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        ...options.headers,
+      }
+
+      // Add session ID if available
+      const sessionId = this.getSessionId()
+      if (sessionId) {
+        headers['X-Session-ID'] = sessionId
+      }
+
       const response = await fetch(`${API_BASE}${endpoint}`, {
-        headers: {
-          'Content-Type': 'application/json',
-          ...options.headers,
-        },
+        headers,
         ...options,
       })
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
+        let errorMessage = `HTTP error! status: ${response.status}`
+        try {
+          const errorData = await response.json()
+          errorMessage = errorData.error || errorMessage
+        } catch (e) {
+          // If response isn't JSON, use the status message
+        }
+        throw new Error(errorMessage)
       }
 
       const data = await response.json()
+      console.log(`API ${endpoint} response:`, data)
       return { success: true, data }
     } catch (error) {
+      console.error(`API ${endpoint} error:`, error)
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
@@ -55,10 +93,22 @@ class ApiClient {
   }
 
   async connect(config: ConnectRequest) {
-    return this.request<{ connectionId: string }>('/connections/connect', {
+    console.log('API connect called with:', config)
+    const response = await this.request<{ connectionId: string, userSession: string, connection: any }>('/connections/connect', {
       method: 'POST',
       body: JSON.stringify(config),
     })
+    
+    console.log('API connect response:', response)
+    
+    // Store session ID if connection is successful
+    const actualData = response.data?.data || response.data
+    if (response.success && actualData?.userSession) {
+      console.log('Storing session ID:', actualData.userSession)
+      this.setSessionId(actualData.userSession)
+    }
+    
+    return response
   }
 
   async disconnect(connectionId: string) {
