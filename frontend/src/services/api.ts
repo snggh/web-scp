@@ -74,10 +74,8 @@ class ApiClient {
       }
 
       const data = await response.json()
-      console.log(`API ${endpoint} response:`, data)
       return { success: true, data }
     } catch (error) {
-      console.error(`API ${endpoint} error:`, error)
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
@@ -93,18 +91,14 @@ class ApiClient {
   }
 
   async connect(config: ConnectRequest) {
-    console.log('API connect called with:', config)
     const response = await this.request<{ connectionId: string, userSession: string, connection: any }>('/connections/connect', {
       method: 'POST',
       body: JSON.stringify(config),
     })
     
-    console.log('API connect response:', response)
-    
     // Store session ID if connection is successful
     const actualData = response.data?.data || response.data
     if (response.success && actualData?.userSession) {
-      console.log('Storing session ID:', actualData.userSession)
       this.setSessionId(actualData.userSession)
     }
     

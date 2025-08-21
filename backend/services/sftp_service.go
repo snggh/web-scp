@@ -126,13 +126,10 @@ func (c *SFTPClient) ListFiles(path string) ([]models.FileInfo, error) {
 		path = "/"
 	}
 
-	fmt.Printf("SFTP ListFiles called for path: %s\n", path)
 	entries, err := c.sftpClient.ReadDir(path)
 	if err != nil {
-		fmt.Printf("SFTP ListFiles error: %v\n", err)
 		return nil, fmt.Errorf("failed to list directory: %w", err)
 	}
-	fmt.Printf("SFTP ListFiles success, found %d entries\n", len(entries))
 
 	files := make([]models.FileInfo, 0, len(entries))
 	for _, entry := range entries {

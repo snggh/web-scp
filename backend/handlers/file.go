@@ -50,8 +50,7 @@ func (h *FileHandler) ListFiles(c *fiber.Ctx) error {
 		})
 	}
 
-	// Debug logging
-	fmt.Printf("File list request - Session: '%s', ConnectionID: %s, Path: %s\n", userSession, connectionID, decodedPath)
+
 
 	// Get connection from pool
 	pooledConn, err := h.poolManager.GetConnection(userSession, connectionID)

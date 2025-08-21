@@ -18,7 +18,6 @@ export const useConnectionStore = create<ConnectionStore>()(
       connections: [],
       activeConnection: null,
       addConnection: (connection) => {
-        console.log('Adding connection to store:', connection)
         set((state) => ({
           connections: [...state.connections, connection],
         }))
@@ -39,13 +38,11 @@ export const useConnectionStore = create<ConnectionStore>()(
               : state.activeConnection,
         })),
       setActiveConnection: (connection) => {
-        console.log('Setting active connection:', connection)
         set({ activeConnection: connection })
       },
       loadPersistedConnections: () => {
         // This will be called to restore persisted state
         const state = get()
-        console.log('Loaded persisted connections:', state.connections)
       },
     }),
     {
@@ -55,10 +52,7 @@ export const useConnectionStore = create<ConnectionStore>()(
         activeConnection: state.activeConnection,
       }),
       onRehydrateStorage: () => (state) => {
-        if (state) {
-          console.log('Rehydrated connections:', state.connections)
-          console.log('Rehydrated active connection:', state.activeConnection)
-        }
+        // Silent rehydration
       },
     }
   )

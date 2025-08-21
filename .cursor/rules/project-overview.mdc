@@ -50,14 +50,19 @@ Web-SCP is a modern, web-based file transfer application similar to WinSCP but f
 - ✅ SFTP connection service implementation
 - ✅ Connection pooling with timeout management
 - ✅ Frontend connection form with validation
-- ✅ Basic file operations (list, navigate)
+- ✅ **Connection persistence and stability**
+- ✅ **Complete file operations (list, navigate, create, update, delete directories)**
+- ✅ **Stable SFTP connection management**
 - 🚧 File upload/download and transfer system
 - 🚧 Transfer progress tracking with WebSocket
 
-## Known Issues (Recently Fixed)
+## Critical Issues Fixed
 - ✅ **Connection Persistence**: Fixed frontend API proxy routing to hit backend properly
 - ✅ **Session Management**: Fixed X-Session-ID header handling between frontend and backend
 - ✅ **CORS Configuration**: Added X-Session-ID to allowed headers
 - ✅ **Environment Detection**: Fixed localhost resolution for Docker vs local development
+- ✅ **Session ID Corruption**: Fixed session ID corruption causing multiple pools per session (race condition)
+- ✅ **Pool Map Integrity**: Implemented session ID cleaning to prevent map key corruption
+- ✅ **Connection Pool Stability**: Resolved non-deterministic pool retrieval causing "Connection not found" errors
 
 Always maintain consistency with these architectural decisions and development patterns.

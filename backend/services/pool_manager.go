@@ -63,27 +63,16 @@ func (pm *PoolManager) GetPool(userSession string) *ConnectionPool {
 	// Clean the session ID to prevent corruption
 	cleanSession := strings.TrimSpace(userSession)
 	
-	// Debug: Print entire pools map contents
-	fmt.Printf("GetPool - DEBUG: Requested session '%s' (cleaned: '%s'), Total pools: %d\n", userSession, cleanSession, len(pm.pools))
-	for sess, p := range pm.pools {
-		fmt.Printf("  MAP['%s'] = PoolID: %s, PoolAddr: %p, Size: %d\n", sess, p.id, p, len(p.connections))
-	}
-	
 	pool, exists := pm.pools[cleanSession]
 	
 	if !exists {
-		poolID := fmt.Sprintf("pool-%d", time.Now().UnixNano())
-		fmt.Printf("GetPool - Creating new pool for session: '%s', ID: %s\n", cleanSession, poolID)
 		pool = &ConnectionPool{
 			connections: make(map[string]*PooledConnection),
 			maxConns:    pm.config.MaxConnectionsPerUser,
 			timeout:     pm.config.ConnectionTimeout,
-			id:          poolID,
+			id:          fmt.Sprintf("pool-%d", time.Now().UnixNano()),
 		}
 		pm.pools[cleanSession] = pool
-		fmt.Printf("GetPool - New pool created for session: '%s', ID: %s, PoolAddr: %p\n", cleanSession, poolID, pool)
-	} else {
-		fmt.Printf("GetPool - Using existing pool for session: '%s', ID: %s, PoolAddr: %p, PoolSize: %d\n", cleanSession, pool.id, pool, len(pool.connections))
 	}
 	
 	return pool
@@ -123,7 +112,6 @@ func (pm *PoolManager) CreateConnection(ctx context.Context, userSession, connID
 	
 	// Establish actual connection based on protocol
 	var err error
-	fmt.Printf("Creating %s connection for Session: %s, ConnID: %s\n", config.Protocol, userSession, connID)
 	
 	switch config.Protocol {
 	case models.SFTP:
@@ -135,15 +123,11 @@ func (pm *PoolManager) CreateConnection(ctx context.Context, userSession, connID
 	}
 	
 	if err != nil {
-		fmt.Printf("Failed to create %s connection: %v\n", config.Protocol, err)
 		return nil, fmt.Errorf("failed to create %s connection: %w", config.Protocol, err)
 	}
 	
-		pooledConn.IsActive = true
+	pooledConn.IsActive = true
 	pool.connections[connID] = pooledConn
-
-	fmt.Printf("Created connection - Session: %s, ConnID: %s, Active: %v, Stored in pool, PoolSize: %d, PoolID: %s, PoolAddr: %p\n",
-		userSession, connID, pooledConn.IsActive, len(pool.connections), pool.id, pool)
 	
 	return pooledConn, nil
 }
@@ -153,19 +137,9 @@ func (pm *PoolManager) GetConnection(userSession, connID string) (*PooledConnect
 	
 	pool.mutex.RLock()
 	conn, exists := pool.connections[connID]
-	poolSize := len(pool.connections)
-	
-	// Debug: List all connections in this pool
-	fmt.Printf("Pool contents for session %s (PoolID: %s, PoolAddr: %p):\n", userSession, pool.id, pool)
-	for id, c := range pool.connections {
-		fmt.Printf("  - ConnID: %s, Active: %v\n", id, c.IsActive)
-	}
-	
 	pool.mutex.RUnlock()
 	
 	if !exists || !conn.IsActive {
-		fmt.Printf("Connection lookup failed - Session: %s, ConnID: %s, Exists: %v, Active: %v, PoolSize: %d\n", 
-			userSession, connID, exists, exists && conn.IsActive, poolSize)
 		return nil, fmt.Errorf("connection not found or inactive")
 	}
 	
@@ -184,11 +158,8 @@ func (pm *PoolManager) RemoveConnection(userSession, connID string) error {
 	
 	conn, exists := pool.connections[connID]
 	if !exists {
-		fmt.Printf("RemoveConnection called but connection not found - Session: %s, ConnID: %s\n", userSession, connID)
 		return fmt.Errorf("connection not found")
 	}
-	
-	fmt.Printf("RemoveConnection called - Session: %s, ConnID: %s\n", userSession, connID)
 	
 	// Close the actual connection
 	if err := pm.closeConnection(conn); err != nil {
@@ -229,8 +200,6 @@ func (pm *PoolManager) CleanupExpiredConnections() {
 		pool.mutex.Lock()
 		for connID, conn := range pool.connections {
 			if time.Since(conn.LastUsed) > pm.config.ConnectionTimeout {
-				fmt.Printf("Cleaning up expired connection - Session: %s, ConnID: %s, LastUsed: %v ago\n", 
-					session, connID, time.Since(conn.LastUsed))
 				pm.closeConnection(conn)
 				delete(pool.connections, connID)
 			}
@@ -238,7 +207,6 @@ func (pm *PoolManager) CleanupExpiredConnections() {
 		
 		// Remove empty pools
 		if len(pool.connections) == 0 {
-			fmt.Printf("Cleanup removing empty pool - Session: %s, PoolAddr: %p\n", session, pool)
 			pm.mutex.Lock()
 			delete(pm.pools, session)
 			pm.mutex.Unlock()
@@ -263,21 +231,17 @@ func (pm *PoolManager) Shutdown() {
 }
 
 func (pm *PoolManager) startCleanup() {
-	// TEMPORARILY DISABLED FOR DEBUGGING
-	fmt.Printf("Pool cleanup temporarily disabled for debugging\n")
-	<-pm.cleanup
+	ticker := time.NewTicker(pm.config.CleanupInterval)
+	defer ticker.Stop()
 	
-	// ticker := time.NewTicker(pm.config.CleanupInterval)
-	// defer ticker.Stop()
-	
-	// for {
-	// 	select {
-	// 	case <-ticker.C:
-	// 		pm.CleanupExpiredConnections()
-	// 	case <-pm.cleanup:
-	// 		return
-	// 	}
-	// }
+	for {
+		select {
+		case <-ticker.C:
+			pm.CleanupExpiredConnections()
+		case <-pm.cleanup:
+			return
+		}
+	}
 }
 
 func (pm *PoolManager) createSFTPConnection(ctx context.Context, config models.ConnectionRequest) (interface{}, error) {

@@ -25,13 +25,9 @@ export function FileExplorer() {
   const [currentPath, setCurrentPath] = useState(() => getDefaultPath(activeConnection))
 
   const loadFiles = async (path: string) => {
-    console.log('loadFiles called with activeConnection:', activeConnection)
     if (!activeConnection?.id) {
-      console.warn('No active connection or connection ID missing:', activeConnection)
       return
     }
-
-    console.log('Loading files:', { connectionId: activeConnection.id, path })
     setIsLoading(true)
     try {
       const response = await apiClient.listFiles(activeConnection.id, path)
