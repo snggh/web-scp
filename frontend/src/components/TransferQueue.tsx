@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { TransferItem, TransferProgress, WSMessage } from '@/types'
@@ -7,8 +7,14 @@ import { useWebSocket } from '@/hooks/useWebSocket'
 import { useConnectionStore } from '@/stores/connectionStore'
 
 export function TransferQueue() {
-  const { lastMessage, isConnected } = useWebSocket()
   const { transfers, updateTransferProgress, removeTransfer } = useConnectionStore()
+
+  // Only establish WebSocket connection if there are active transfers
+  const hasActiveTransfers = useMemo(() => {
+    return transfers.some(t => t.status === 'transferring' || t.status === 'pending')
+  }, [transfers])
+
+  const { lastMessage, isConnected } = useWebSocket(hasActiveTransfers ? '/ws' : null)
 
   // Listen for WebSocket messages and update transfers
   useEffect(() => {

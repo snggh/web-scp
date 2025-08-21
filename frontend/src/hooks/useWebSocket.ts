@@ -12,7 +12,7 @@ interface UseWebSocketReturn {
   lastMessage: WSMessage | null
 }
 
-export function useWebSocket(url: string = '/ws'): UseWebSocketReturn {
+export function useWebSocket(url: string | null = '/ws'): UseWebSocketReturn {
   const [socket, setSocket] = useState<WebSocket | null>(null)
   const [isConnected, setIsConnected] = useState(false)
   const [lastMessage, setLastMessage] = useState<WSMessage | null>(null)
@@ -20,7 +20,7 @@ export function useWebSocket(url: string = '/ws'): UseWebSocketReturn {
   const shouldReconnectRef = useRef(true)
 
   const connect = () => {
-    if (!shouldReconnectRef.current) return
+    if (!shouldReconnectRef.current || !url) return
 
     try {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -71,7 +71,7 @@ export function useWebSocket(url: string = '/ws'): UseWebSocketReturn {
   }
 
   const send = (message: WSMessage) => {
-    if (socket && isConnected) {
+    if (socket && isConnected && url) {
       try {
         socket.send(JSON.stringify(message))
       } catch (error) {
@@ -92,6 +92,15 @@ export function useWebSocket(url: string = '/ws'): UseWebSocketReturn {
       if (socket) {
         socket.close(1000, 'Component unmounting')
       }
+    }
+  }, [url])
+
+  // Reset connection state when URL is null
+  useEffect(() => {
+    if (!url) {
+      setSocket(null)
+      setIsConnected(false)
+      setLastMessage(null)
     }
   }, [url])
 

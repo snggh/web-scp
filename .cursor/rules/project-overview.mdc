@@ -53,8 +53,10 @@ Web-SCP is a modern, web-based file transfer application similar to WinSCP but f
 - ✅ **Connection persistence and stability**
 - ✅ **Complete file operations (list, navigate, create, update, delete directories)**
 - ✅ **Stable SFTP connection management**
-- 🚧 File upload/download and transfer system
-- 🚧 Transfer progress tracking with WebSocket
+- ✅ **Complete file upload/download and transfer system**
+- ✅ **Real-time transfer progress tracking with WebSocket**
+- ✅ **Drag & drop file upload interface**
+- ✅ **FTP and SFTP protocol support**
 
 ## Critical Issues Fixed
 - ✅ **Connection Persistence**: Fixed frontend API proxy routing to hit backend properly
@@ -64,5 +66,8 @@ Web-SCP is a modern, web-based file transfer application similar to WinSCP but f
 - ✅ **Session ID Corruption**: Fixed session ID corruption causing multiple pools per session (race condition)
 - ✅ **Pool Map Integrity**: Implemented session ID cleaning to prevent map key corruption
 - ✅ **Connection Pool Stability**: Resolved non-deterministic pool retrieval causing "Connection not found" errors
+- ✅ **Backend Compilation**: Fixed missing `os` import causing container startup failure
+- ✅ **WebSocket Proxy**: Fixed Vite proxy configuration for proper backend connection routing
+- ✅ **File Download**: Fixed binary data parsing issue for proper file downloads
 
 Always maintain consistency with these architectural decisions and development patterns.
