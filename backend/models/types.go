@@ -9,23 +9,44 @@ const (
 	SFTP Protocol = "sftp"
 )
 
+type AuthMethod string
+
+const (
+	AuthMethodPassword AuthMethod = "password"
+	AuthMethodKey      AuthMethod = "key"
+)
+
 type ConnectionRequest struct {
-	Name     string   `json:"name" validate:"required"`
-	Protocol Protocol `json:"protocol" validate:"required,oneof=ftp sftp"`
-	Host     string   `json:"host" validate:"required"`
-	Port     int      `json:"port" validate:"required,min=1,max=65535"`
-	Username string   `json:"username" validate:"required"`
-	Password string   `json:"password"`
-	KeyFile  string   `json:"keyFile"`
+	Name       string     `json:"name" validate:"required"`
+	Protocol   Protocol   `json:"protocol" validate:"required,oneof=ftp sftp"`
+	Host       string     `json:"host" validate:"required"`
+	Port       int        `json:"port" validate:"required,min=1,max=65535"`
+	Username   string     `json:"username" validate:"required"`
+	AuthMethod AuthMethod `json:"authMethod" validate:"required,oneof=password key"`
+
+	// Password authentication
+	Password string `json:"password,omitempty"`
+
+	// SSH Key authentication
+	PrivateKey     string `json:"privateKey,omitempty"`     // Base64 encoded or plain text
+	PrivateKeyFile string `json:"privateKeyFile,omitempty"` // For file upload
+	Passphrase     string `json:"passphrase,omitempty"`     // Optional passphrase for encrypted keys
 }
 
 type TestConnectionRequest struct {
-	Protocol Protocol `json:"protocol" validate:"required,oneof=ftp sftp"`
-	Host     string   `json:"host" validate:"required"`
-	Port     int      `json:"port" validate:"required,min=1,max=65535"`
-	Username string   `json:"username" validate:"required"`
-	Password string   `json:"password"`
-	KeyFile  string   `json:"keyFile"`
+	Protocol   Protocol   `json:"protocol" validate:"required,oneof=ftp sftp"`
+	Host       string     `json:"host" validate:"required"`
+	Port       int        `json:"port" validate:"required,min=1,max=65535"`
+	Username   string     `json:"username" validate:"required"`
+	AuthMethod AuthMethod `json:"authMethod" validate:"required,oneof=password key"`
+
+	// Password authentication
+	Password string `json:"password,omitempty"`
+
+	// SSH Key authentication
+	PrivateKey     string `json:"privateKey,omitempty"`
+	PrivateKeyFile string `json:"privateKeyFile,omitempty"`
+	Passphrase     string `json:"passphrase,omitempty"`
 }
 
 type Connection struct {

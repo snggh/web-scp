@@ -5,10 +5,16 @@ export interface Connection {
   host: string
   port: number
   username: string
-  password?: string
-  keyFile?: string
   status: 'connecting' | 'connected' | 'disconnected' | 'error'
   lastConnected?: Date
+  // Legacy fields for backward compatibility
+  password?: string
+  keyFile?: string
+  // New authentication fields
+  authMethod?: 'password' | 'key'
+  privateKey?: string
+  privateKeyFile?: File
+  passphrase?: string
 }
 
 export interface FileItem {

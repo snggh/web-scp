@@ -51,6 +51,7 @@ services:
     command: testuser:testpass:1000:1000:upload
     volumes:
       - ./test-data:/home/testuser/upload
+      - ./test-keys/.ssh:/home/testuser/.ssh
     networks:
       - web-scp
 

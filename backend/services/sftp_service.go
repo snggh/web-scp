@@ -56,20 +56,71 @@ func (s *SFTPService) Connect(ctx context.Context, config models.ConnectionReque
 		Timeout:         s.config.ConnectTimeout,
 	}
 
-	// Add authentication method
-	if config.KeyFile != "" {
+	// Add authentication method based on AuthMethod
+	var authMethods []ssh.AuthMethod
+
+	switch config.AuthMethod {
+	case models.AuthMethodKey:
 		// SSH key authentication
-		key, err := s.loadPrivateKey(config.KeyFile, config.Password)
-		if err != nil {
-			return nil, fmt.Errorf("failed to load private key: %w", err)
+		var privateKeyData []byte
+		var err error
+
+		if config.PrivateKeyFile != "" {
+			// Load from uploaded file
+			privateKeyData, err = ioutil.ReadFile(config.PrivateKeyFile)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read private key file: %w", err)
+			}
+		} else if config.PrivateKey != "" {
+			// Use provided private key content
+			privateKeyData = []byte(config.PrivateKey)
+		} else {
+			return nil, fmt.Errorf("no private key provided for key authentication")
 		}
-		sshConfig.Auth = []ssh.AuthMethod{ssh.PublicKeys(key)}
-	} else if config.Password != "" {
+
+		key, err := s.parsePrivateKey(privateKeyData, config.Passphrase)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse private key: %w", err)
+		}
+		authMethods = []ssh.AuthMethod{ssh.PublicKeys(key)}
+
+	case models.AuthMethodPassword:
 		// Password authentication
-		sshConfig.Auth = []ssh.AuthMethod{ssh.Password(config.Password)}
-	} else {
-		return nil, fmt.Errorf("no authentication method provided")
+		if config.Password == "" {
+			return nil, fmt.Errorf("password is required for password authentication")
+		}
+		authMethods = []ssh.AuthMethod{ssh.Password(config.Password)}
+
+	default:
+		// Backward compatibility - try to determine from existing fields
+		if config.PrivateKey != "" || config.PrivateKeyFile != "" {
+			// SSH key authentication (legacy support)
+			var privateKeyData []byte
+			var err error
+
+			if config.PrivateKeyFile != "" {
+				privateKeyData, err = ioutil.ReadFile(config.PrivateKeyFile)
+				if err != nil {
+					return nil, fmt.Errorf("failed to read private key file: %w", err)
+				}
+			} else if config.PrivateKey != "" {
+				privateKeyData = []byte(config.PrivateKey)
+			}
+
+			key, err := s.parsePrivateKey(privateKeyData, config.Passphrase)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse private key: %w", err)
+			}
+			authMethods = []ssh.AuthMethod{ssh.PublicKeys(key)}
+		} else if config.Password != "" {
+			// Password authentication
+			authMethods = []ssh.AuthMethod{ssh.Password(config.Password)}
+		} else {
+			return nil, fmt.Errorf("no authentication method provided")
+		}
 	}
+
+	sshConfig.Auth = authMethods
 
 	// Connect to SSH server
 	resolvedHost := s.resolveHost(config.Host)
@@ -98,12 +149,15 @@ func (s *SFTPService) Connect(ctx context.Context, config models.ConnectionReque
 func (s *SFTPService) TestConnection(ctx context.Context, config models.TestConnectionRequest) error {
 	// Convert TestConnectionRequest to ConnectionRequest
 	connConfig := models.ConnectionRequest{
-		Protocol: config.Protocol,
-		Host:     config.Host,
-		Port:     config.Port,
-		Username: config.Username,
-		Password: config.Password,
-		KeyFile:  config.KeyFile,
+		Protocol:       config.Protocol,
+		Host:           config.Host,
+		Port:           config.Port,
+		Username:       config.Username,
+		AuthMethod:     config.AuthMethod,
+		Password:       config.Password,
+		PrivateKey:     config.PrivateKey,
+		PrivateKeyFile: config.PrivateKeyFile,
+		Passphrase:     config.Passphrase,
 	}
 
 	client, err := s.Connect(ctx, connConfig)
@@ -283,17 +337,14 @@ func (c *SFTPClient) Close() error {
 	return nil
 }
 
-func (s *SFTPService) loadPrivateKey(keyPath, passphrase string) (ssh.Signer, error) {
-	key, err := ioutil.ReadFile(keyPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read private key file: %w", err)
-	}
-
+func (s *SFTPService) parsePrivateKey(privateKeyData []byte, passphrase string) (ssh.Signer, error) {
 	var signer ssh.Signer
+	var err error
+
 	if passphrase != "" {
-		signer, err = ssh.ParsePrivateKeyWithPassphrase(key, []byte(passphrase))
+		signer, err = ssh.ParsePrivateKeyWithPassphrase(privateKeyData, []byte(passphrase))
 	} else {
-		signer, err = ssh.ParsePrivateKey(key)
+		signer, err = ssh.ParsePrivateKey(privateKeyData)
 	}
 
 	if err != nil {
@@ -301,6 +352,16 @@ func (s *SFTPService) loadPrivateKey(keyPath, passphrase string) (ssh.Signer, er
 	}
 
 	return signer, nil
+}
+
+// loadPrivateKey maintains backward compatibility for legacy key file loading
+func (s *SFTPService) loadPrivateKey(keyPath, passphrase string) (ssh.Signer, error) {
+	key, err := ioutil.ReadFile(keyPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read private key file: %w", err)
+	}
+
+	return s.parsePrivateKey(key, passphrase)
 }
 
 // resolveHost translates localhost addresses appropriately for the environment
