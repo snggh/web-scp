@@ -50,6 +50,7 @@ Web-SCP is a modern, web-based file transfer application similar to WinSCP but f
 - ✅ SFTP connection service implementation
 - ✅ Connection pooling with timeout management
 - ✅ Frontend connection form with validation
+- ✅ **SSH key-based authentication support**
 - ✅ **Connection persistence and stability**
 - ✅ **Complete file operations (list, navigate, create, update, delete directories)**
 - ✅ **Stable SFTP connection management**

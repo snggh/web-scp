@@ -6,7 +6,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { useConnectionStore } from '@/stores/connectionStore'
 import { apiClient } from '@/services/api'
 import { Connection } from '@/types'
-import { Loader2, TestTube, Plus } from 'lucide-react'
+import { Loader2, TestTube, Plus, Key, Lock } from 'lucide-react'
 
 export function ConnectionForm() {
   const { addConnection, setActiveConnection } = useConnectionStore()
@@ -16,7 +16,11 @@ export function ConnectionForm() {
     host: '',
     port: 22,
     username: '',
+    authMethod: 'password' as 'password' | 'key',
     password: '',
+    privateKey: '',
+    privateKeyFile: null as File | null,
+    passphrase: '',
   })
   const [isTestingConnection, setIsTestingConnection] = useState(false)
   const [isConnecting, setIsConnecting] = useState(false)
@@ -27,18 +31,59 @@ export function ConnectionForm() {
     setTestResult(null)
   }
 
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (file) {
+      setFormData(prev => ({ ...prev, privateKeyFile: file, privateKey: '' }))
+      setTestResult(null)
+    }
+  }
+
+  const handleKeyTextChange = (value: string) => {
+    setFormData(prev => ({ ...prev, privateKey: value, privateKeyFile: null }))
+    setTestResult(null)
+  }
+
+  const handleAuthMethodChange = (method: 'password' | 'key') => {
+    setFormData(prev => ({
+      ...prev,
+      authMethod: method,
+      password: method === 'password' ? prev.password : '',
+      privateKey: method === 'key' ? prev.privateKey : '',
+      privateKeyFile: method === 'key' ? prev.privateKeyFile : null,
+      passphrase: method === 'key' ? prev.passphrase : '',
+    }))
+    setTestResult(null)
+  }
+
   const handleTestConnection = async () => {
     setIsTestingConnection(true)
     setTestResult(null)
 
     try {
-      const result = await apiClient.testConnection({
+      // Prepare test connection data
+      const testData: any = {
         protocol: formData.protocol,
         host: formData.host,
         port: formData.port,
         username: formData.username,
-        password: formData.password,
-      })
+        authMethod: formData.authMethod,
+      }
+
+      if (formData.authMethod === 'password') {
+        testData.password = formData.password
+      } else {
+        testData.passphrase = formData.passphrase
+        if (formData.privateKey) {
+          testData.privateKey = formData.privateKey
+        } else if (formData.privateKeyFile) {
+          // Read file content for test
+          const fileContent = await formData.privateKeyFile.text()
+          testData.privateKey = fileContent
+        }
+      }
+
+      const result = await apiClient.testConnection(testData)
 
       if (result.success) {
         setTestResult('✅ Connection test successful!')
@@ -56,12 +101,36 @@ export function ConnectionForm() {
     setIsConnecting(true)
 
     try {
-      const result = await apiClient.connect(formData)
+      // Prepare connection data
+      const connectionData: any = {
+        name: formData.name,
+        protocol: formData.protocol,
+        host: formData.host,
+        port: formData.port,
+        username: formData.username,
+        authMethod: formData.authMethod,
+      }
+
+      if (formData.authMethod === 'password') {
+        connectionData.password = formData.password
+      } else {
+        connectionData.passphrase = formData.passphrase
+        if (formData.privateKey) {
+          connectionData.privateKey = formData.privateKey
+        } else if (formData.privateKeyFile) {
+          // For connection, we'll use the file path approach
+          // In a real implementation, you might upload the file first
+          const fileContent = await formData.privateKeyFile.text()
+          connectionData.privateKey = fileContent
+        }
+      }
+
+      const result = await apiClient.connect(connectionData)
 
       if (result.success && result.data) {
         // The response is double-nested: result.data.data contains the actual connection data
         const actualData = result.data.data || result.data
-        
+
         const connection: Connection = {
           id: actualData.connectionId,
           name: formData.name,
@@ -76,7 +145,7 @@ export function ConnectionForm() {
         addConnection(connection)
         setActiveConnection(connection)
         setTestResult('✅ Connected successfully!')
-        
+
         // Reset form
         setFormData({
           name: '',
@@ -84,7 +153,11 @@ export function ConnectionForm() {
           host: '',
           port: 22,
           username: '',
+          authMethod: 'password',
           password: '',
+          privateKey: '',
+          privateKeyFile: null,
+          passphrase: '',
         })
       } else {
         setTestResult(`❌ Connection failed: ${result.error}`)
@@ -123,6 +196,31 @@ export function ConnectionForm() {
         </div>
       </div>
 
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="username">Username</Label>
+          <Input
+            id="username"
+            value={formData.username}
+            onChange={(e) => handleInputChange('username', e.target.value)}
+            placeholder="username"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="authMethod">Authentication Method</Label>
+          <select
+            id="authMethod"
+            value={formData.authMethod}
+            onChange={(e) => handleAuthMethodChange(e.target.value as 'password' | 'key')}
+            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+          >
+            <option value="password">Password</option>
+            <option value="key">SSH Key</option>
+          </select>
+        </div>
+      </div>
+
       <div className="grid grid-cols-3 gap-4">
         <div className="col-span-2 space-y-2">
           <Label htmlFor="host">Host</Label>
@@ -145,17 +243,8 @@ export function ConnectionForm() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="username">Username</Label>
-          <Input
-            id="username"
-            value={formData.username}
-            onChange={(e) => handleInputChange('username', e.target.value)}
-            placeholder="username"
-          />
-        </div>
-
+      {/* Authentication Fields */}
+      {formData.authMethod === 'password' && (
         <div className="space-y-2">
           <Label htmlFor="password">Password</Label>
           <Input
@@ -163,10 +252,67 @@ export function ConnectionForm() {
             type="password"
             value={formData.password}
             onChange={(e) => handleInputChange('password', e.target.value)}
-            placeholder="password"
+            placeholder="Enter password"
           />
         </div>
-      </div>
+      )}
+
+      {formData.authMethod === 'key' && (
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label>Private Key</Label>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Input
+                  type="file"
+                  accept=".pem,.key,.ppk"
+                  onChange={handleFileUpload}
+                  className="flex-1"
+                />
+                <span className="text-sm text-muted-foreground">or</span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setFormData(prev => ({ ...prev, privateKeyFile: null }))
+                  }}
+                  className="flex items-center gap-1"
+                >
+                  <Key className="h-4 w-4" />
+                  Paste Key
+                </Button>
+              </div>
+
+              {formData.privateKeyFile && (
+                <p className="text-sm text-muted-foreground">
+                  Selected: {formData.privateKeyFile.name}
+                </p>
+              )}
+
+              {!formData.privateKeyFile && (
+                <textarea
+                  value={formData.privateKey}
+                  onChange={(e) => handleKeyTextChange(e.target.value)}
+                  placeholder="Paste your private key here..."
+                  className="flex min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                />
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="passphrase">Passphrase (Optional)</Label>
+            <Input
+              id="passphrase"
+              type="password"
+              value={formData.passphrase}
+              onChange={(e) => handleInputChange('passphrase', e.target.value)}
+              placeholder="Enter passphrase if key is encrypted"
+            />
+          </div>
+        </div>
+      )}
 
       {testResult && (
         <Card>
@@ -179,7 +325,13 @@ export function ConnectionForm() {
       <div className="flex gap-2">
         <Button
           onClick={handleTestConnection}
-          disabled={isTestingConnection || !formData.host || !formData.username}
+          disabled={
+            isTestingConnection ||
+            !formData.host ||
+            !formData.username ||
+            (formData.authMethod === 'password' && !formData.password) ||
+            (formData.authMethod === 'key' && !formData.privateKey && !formData.privateKeyFile)
+          }
           variant="outline"
           className="flex items-center gap-2"
         >
@@ -193,7 +345,14 @@ export function ConnectionForm() {
 
         <Button
           onClick={handleConnect}
-          disabled={isConnecting || !formData.name || !formData.host || !formData.username}
+          disabled={
+            isConnecting ||
+            !formData.name ||
+            !formData.host ||
+            !formData.username ||
+            (formData.authMethod === 'password' && !formData.password) ||
+            (formData.authMethod === 'key' && !formData.privateKey && !formData.privateKeyFile)
+          }
           className="flex items-center gap-2"
         >
           {isConnecting ? (
