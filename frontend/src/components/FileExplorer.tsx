@@ -1,10 +1,30 @@
 import { useState, useEffect, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { useConnectionStore } from '@/stores/connectionStore'
 import { apiClient } from '@/services/api'
+import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { FileItem } from '@/types'
-import { Folder, File, ArrowLeft, RefreshCw, Plus, Trash2, Edit, Upload, Download } from 'lucide-react'
+import { 
+  Folder, 
+  File, 
+  ArrowLeft, 
+  RefreshCw, 
+  Trash2, 
+  Edit, 
+  Upload, 
+  Download,
+  Home,
+  FolderPlus,
+  FileText,
+  Image,
+  Music,
+  Video,
+  Archive,
+  Code
+} from 'lucide-react'
+
 
 export function FileExplorer() {
   const { activeConnection } = useConnectionStore()
@@ -18,8 +38,55 @@ export function FileExplorer() {
   const [isDragOver, setIsDragOver] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
 
+  // UI states
+  const [selectedFiles] = useState<string[]>([])
+  const [sortBy, setSortBy] = useState<'name' | 'size' | 'modified'>('name')
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
+
   // File input ref
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Get file icon based on file type and extension
+  const getFileIcon = (file: FileItem) => {
+    if (file.type === 'directory') {
+      return <Folder className="h-4 w-4 text-blue-500" />
+    }
+
+    const extension = file.name.split('.').pop()?.toLowerCase()
+    
+    // Image files
+    if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'svg', 'webp', 'heic'].includes(extension || '')) {
+      return <Image className="h-4 w-4 text-green-500" />
+    }
+    
+    // Video files
+    if (['mp4', 'avi', 'mov', 'wmv', 'flv', 'webm', 'mkv'].includes(extension || '')) {
+      return <Video className="h-4 w-4 text-red-500" />
+    }
+    
+    // Audio files
+    if (['mp3', 'wav', 'flac', 'aac', 'ogg', 'm4a'].includes(extension || '')) {
+      return <Music className="h-4 w-4 text-purple-500" />
+    }
+    
+    // Archive files
+    if (['zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'xz'].includes(extension || '')) {
+      return <Archive className="h-4 w-4 text-orange-500" />
+    }
+    
+    // Code files
+    if (['js', 'ts', 'jsx', 'tsx', 'py', 'java', 'cpp', 'c', 'php', 'rb', 'go', 'rs', 'swift'].includes(extension || '')) {
+      return <Code className="h-4 w-4 text-cyan-500" />
+    }
+    
+    // Text files
+    if (['txt', 'md', 'csv', 'json', 'xml', 'yml', 'yaml'].includes(extension || '')) {
+      return <FileText className="h-4 w-4 text-gray-500" />
+    }
+    
+    // Default file icon
+    return <File className="h-4 w-4 text-gray-500" />
+  }
   
   // Calculate default path based on connection without useEffect
   const getDefaultPath = (connection: typeof activeConnection) => {
@@ -31,6 +98,32 @@ export function FileExplorer() {
 
   const [currentPath, setCurrentPath] = useState(() => getDefaultPath(activeConnection))
 
+  // File Explorer keyboard shortcuts
+  useKeyboardShortcuts({
+    'f5': () => handleRefresh(),
+    'ctrl+r': () => handleRefresh(),
+    'ctrl+shift+n': () => {
+      const name = prompt('Enter directory name:')
+      if (name?.trim()) {
+        handleCreateDirectory(name.trim())
+      }
+    },
+    'ctrl+u': () => fileInputRef.current?.click(),
+    'backspace': () => {
+      if (currentPath !== '/') {
+        const parentPath = currentPath.split('/').slice(0, -1).join('/') || '/'
+        setCurrentPath(parentPath)
+      }
+    },
+    'alt+up': () => {
+      if (currentPath !== '/') {
+        const parentPath = currentPath.split('/').slice(0, -1).join('/') || '/'
+        setCurrentPath(parentPath)
+      }
+    },
+    'ctrl+home': () => setCurrentPath('/'),
+  }, !!activeConnection)
+
   const loadFiles = async (path: string) => {
     if (!activeConnection?.id) {
       return
@@ -39,8 +132,8 @@ export function FileExplorer() {
     try {
       const response = await apiClient.listFiles(activeConnection.id, path)
       if (response.success && response.data) {
-        // Handle double-nested response structure
-        const actualData = response.data.data || response.data
+        // Handle response structure
+        const actualData = (response.data as any).data || response.data
         const fileItems: FileItem[] = actualData.files.map((file: any) => ({
           name: file.name,
           size: file.size,
@@ -291,57 +384,121 @@ export function FileExplorer() {
     )
   }
 
+  // Sort files
+  const sortedFiles = [...files].sort((a, b) => {
+    let aValue: string | number
+    let bValue: string | number
+    
+    if (sortBy === 'modified') {
+      aValue = a.modified.getTime()
+      bValue = b.modified.getTime()
+    } else if (sortBy === 'size') {
+      aValue = a.size
+      bValue = b.size
+    } else {
+      aValue = a.name.toLowerCase()
+      bValue = b.name.toLowerCase()
+    }
+    
+    const comparison = aValue < bValue ? -1 : aValue > bValue ? 1 : 0
+    return sortOrder === 'asc' ? comparison : -comparison
+  })
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setCurrentPath('/')}
-          disabled={currentPath === '/'}
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <Input
-          value={currentPath}
-          onChange={(e) => handlePathChange(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              handleRefresh()
-            }
-          }}
-          className="font-mono text-sm"
-          placeholder="/"
-        />
-        <Button 
-          variant="outline" 
-          size="sm" 
-          disabled={isLoading}
-          onClick={handleRefresh}
-        >
-          <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            const name = prompt('Enter directory name:')
-            if (name?.trim()) {
-              handleCreateDirectory(name.trim())
-            }
-          }}
-          disabled={isLoading || isOperating}
-        >
-          <Plus className="h-4 w-4" />
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={isLoading || isUploading}
-        >
-          <Upload className="h-4 w-4" />
-        </Button>
+      {/* Navigation Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+        {/* Path Navigation */}
+        <div className="flex items-center gap-2 flex-1">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setCurrentPath('/')}
+            disabled={currentPath === '/' || isLoading}
+            aria-label="Go to root directory"
+          >
+            <Home className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              const parentPath = currentPath.split('/').slice(0, -1).join('/') || '/'
+              setCurrentPath(parentPath)
+            }}
+            disabled={currentPath === '/' || isLoading}
+            aria-label="Go back"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <Input
+            value={currentPath}
+            onChange={(e) => handlePathChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                handleRefresh()
+              }
+            }}
+            className="font-mono text-sm flex-1 min-w-0"
+            placeholder="/"
+            aria-label="Current path"
+          />
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex items-center gap-2">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            disabled={isLoading}
+            onClick={handleRefresh}
+            aria-label="Refresh directory"
+          >
+            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+          </Button>
+          
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={isLoading || isOperating}
+                aria-label="Create new directory"
+              >
+                <FolderPlus className="h-4 w-4" />
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Create New Directory</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <Input
+                  placeholder="Directory name"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      const target = e.target as HTMLInputElement
+                      if (target.value.trim()) {
+                        handleCreateDirectory(target.value.trim())
+                        target.value = ''
+                      }
+                    }
+                  }}
+                />
+              </div>
+            </DialogContent>
+          </Dialog>
+          
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isLoading || isUploading}
+            aria-label="Upload files"
+          >
+            <Upload className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
       {/* Hidden file input */}
@@ -351,67 +508,130 @@ export function FileExplorer() {
         multiple
         style={{ display: 'none' }}
         onChange={(e) => handleFileSelect(e.target.files)}
+        aria-label="File upload input"
       />
 
+      {/* File List */}
       <div
-        className={`border rounded-lg transition-colors ${
-          isDragOver ? 'border-primary bg-primary/5' : ''
+        className={`border rounded-lg transition-all duration-200 ${
+          isDragOver ? 'border-primary bg-primary/5' : 'border-border'
         }`}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
       >
         {isDragOver && (
-          <div className="p-8 text-center text-primary">
-            <Upload className="h-12 w-12 mx-auto mb-2" />
-            <p>Drop files here to upload</p>
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-primary/10 rounded-lg backdrop-blur-sm">
+            <div className="text-center text-primary">
+              <Upload className="h-12 w-12 mx-auto mb-2" />
+              <p className="font-medium">Drop files here to upload</p>
+            </div>
           </div>
         )}
 
-        <div className="grid grid-cols-12 gap-2 p-3 bg-muted text-sm font-medium border-b">
-          <div className="col-span-5">Name</div>
-          <div className="col-span-2">Size</div>
-          <div className="col-span-2">Modified</div>
+        {/* Header */}
+        <div className="grid grid-cols-12 gap-3 p-4 bg-muted/50 text-sm font-medium border-b">
+          <div className="col-span-5 flex items-center gap-2">
+            <button
+              onClick={() => {
+                if (sortBy === 'name') {
+                  setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
+                } else {
+                  setSortBy('name')
+                  setSortOrder('asc')
+                }
+              }}
+              className="flex items-center gap-1 hover:text-primary transition-colors"
+            >
+              Name
+              {sortBy === 'name' && (
+                <span className={`transform ${sortOrder === 'desc' ? 'rotate-180' : ''}`}>
+                  ↑
+                </span>
+              )}
+            </button>
+          </div>
+          <div className="col-span-2">
+            <button
+              onClick={() => {
+                if (sortBy === 'size') {
+                  setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
+                } else {
+                  setSortBy('size')
+                  setSortOrder('desc')
+                }
+              }}
+              className="hover:text-primary transition-colors"
+            >
+              Size
+            </button>
+          </div>
+          <div className="col-span-2">
+            <button
+              onClick={() => {
+                if (sortBy === 'modified') {
+                  setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
+                } else {
+                  setSortBy('modified')
+                  setSortOrder('desc')
+                }
+              }}
+              className="hover:text-primary transition-colors"
+            >
+              Modified
+            </button>
+          </div>
           <div className="col-span-2">Permissions</div>
           <div className="col-span-1">Actions</div>
         </div>
 
-        <div className="max-h-96 overflow-y-auto">
-          {files.map((file, index) => (
+        {/* File List */}
+        <div className="max-h-[60vh] overflow-y-auto">
+          {sortedFiles.map((file) => (
             <div
-              key={index}
-              className="grid grid-cols-12 gap-2 p-3 hover:bg-muted/50 border-b last:border-b-0 text-sm"
+              key={`${file.path}-${file.name}`}
+              className={`group grid grid-cols-12 gap-3 p-3 hover:bg-muted/50 border-b last:border-b-0 text-sm transition-colors cursor-pointer ${
+                selectedFiles.includes(file.path) ? 'bg-primary/10' : ''
+              }`}
+              onClick={() => handleFileClick(file)}
+              onDoubleClick={() => {
+                if (file.type === 'directory') {
+                  handleFileClick(file)
+                } else {
+                  handleDownloadFile(file)
+                }
+              }}
             >
-              <div 
-                className="col-span-5 flex items-center gap-2 cursor-pointer"
-                onClick={() => handleFileClick(file)}
-              >
-                {file.type === 'directory' ? (
-                  <Folder className="h-4 w-4 text-blue-500" />
-                ) : (
-                  <File className="h-4 w-4 text-gray-500" />
-                )}
-                <span className={file.name === '..' ? 'text-muted-foreground' : ''}>
+              <div className="col-span-5 flex items-center gap-3 min-w-0">
+                <div className="flex-shrink-0">
+                  {getFileIcon(file)}
+                </div>
+                <span 
+                  className={`truncate ${
+                    file.name === '..' ? 'text-muted-foreground font-medium' : ''
+                  }`}
+                  title={file.name}
+                >
                   {file.name}
                 </span>
               </div>
-              <div className="col-span-2 text-muted-foreground">
+              <div className="col-span-2 text-muted-foreground tabular-nums">
                 {formatFileSize(file.size)}
               </div>
-              <div className="col-span-2 text-muted-foreground">
+              <div className="col-span-2 text-muted-foreground text-xs">
                 {formatDate(file.modified)}
               </div>
               <div className="col-span-2 text-muted-foreground font-mono text-xs">
                 {file.permissions}
               </div>
-              <div className="col-span-1 flex items-center gap-1">
+              <div className="col-span-1 flex items-center justify-center">
                 {file.name !== '..' && (
-                  <>
+                  <div className="flex items-center gap-1 transition-opacity">
                     {file.type === 'file' && (
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-6 w-6 p-0"
+                        className="h-7 w-7 p-0 hover:bg-green-100 hover:text-green-700 dark:hover:bg-green-900"
                         onClick={(e) => {
                           e.stopPropagation()
                           handleDownloadFile(file)
@@ -425,50 +645,80 @@ export function FileExplorer() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-6 w-6 p-0"
+                      className="h-7 w-7 p-0 hover:bg-blue-100 hover:text-blue-700 dark:hover:bg-blue-900"
                       onClick={(e) => {
                         e.stopPropagation()
                         openRenameDialog(file)
                       }}
                       disabled={isOperating}
+                      title="Rename"
                     >
                       <Edit className="h-3 w-3" />
                     </Button>
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-6 w-6 p-0 text-destructive hover:text-destructive"
+                      className="h-7 w-7 p-0 hover:bg-red-100 hover:text-red-700 dark:hover:bg-red-900"
                       onClick={(e) => {
                         e.stopPropagation()
                         handleDeleteFile(file)
                       }}
                       disabled={isOperating}
+                      title="Delete"
                     >
                       <Trash2 className="h-3 w-3" />
                     </Button>
-                  </>
+                  </div>
                 )}
               </div>
             </div>
           ))}
         </div>
 
-        {files.length === 0 && !isUploading && (
-          <div className="p-8 text-center text-muted-foreground">
-            {isLoading ? 'Loading...' : 'No files found'}
+        {/* Empty State */}
+        {files.length === 0 && !isLoading && !isUploading && (
+          <div className="p-16 text-center text-muted-foreground">
+            <Folder className="h-16 w-16 mx-auto mb-4 text-muted-foreground/50" />
+            <h3 className="text-lg font-medium mb-2">Directory is empty</h3>
+            <p className="text-sm">Upload files or create directories to get started</p>
           </div>
         )}
 
+        {/* Loading State */}
+        {isLoading && (
+          <div className="p-16 text-center">
+            <RefreshCw className="h-8 w-8 mx-auto mb-4 text-primary animate-spin" />
+            <p className="text-muted-foreground">Loading directory contents...</p>
+          </div>
+        )}
+
+        {/* Upload State */}
         {isUploading && (
-          <div className="p-8 text-center text-primary">
-            <Upload className="h-8 w-8 mx-auto mb-2 animate-bounce" />
-            <p>Uploading files...</p>
+          <div className="p-16 text-center text-primary">
+            <Upload className="h-12 w-12 mx-auto mb-4 animate-pulse" />
+            <h3 className="text-lg font-medium mb-2">Uploading files...</h3>
+            <p className="text-sm text-muted-foreground">Please wait while files are being uploaded</p>
           </div>
         )}
       </div>
 
-      <div className="text-xs text-muted-foreground">
-        Connected to: {activeConnection.name} ({activeConnection.host}:{activeConnection.port})
+      {/* Footer */}
+      <div className="flex items-center justify-between text-xs text-muted-foreground">
+        <div className="flex items-center gap-4">
+          <span>
+            {files.length > 0 ? `${files.length} item${files.length !== 1 ? 's' : ''}` : 'Empty directory'}
+          </span>
+          {selectedFiles.length > 0 && (
+            <span className="text-primary">
+              {selectedFiles.length} selected
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <span>Connected to:</span>
+          <span className="font-medium text-foreground">{activeConnection.name}</span>
+          <span>({activeConnection.host}:{activeConnection.port})</span>
+        </div>
       </div>
     </div>
   )

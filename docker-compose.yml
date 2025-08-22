@@ -37,7 +37,11 @@ services:
       - ./frontend:/app
       - /app/node_modules
     working_dir: /app
-    command: npm run dev
+    entrypoint: []
+    command:
+      - sh
+      - -lc
+      - pnpm install --frozen-lockfile && pnpm dev --host 0.0.0.0
     depends_on:
       - backend
     networks:

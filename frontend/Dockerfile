@@ -1,19 +1,16 @@
-# Development Dockerfile
+# frontend/Dockerfile
 FROM node:20-alpine
+
+RUN corepack enable
 
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
+# Copy lockfile for reproducible installs
+COPY package.json pnpm-lock.yaml ./
 
-# Install dependencies
-RUN npm install
+RUN pnpm install --frozen-lockfile
 
-# Copy the source code
 COPY . .
 
-# Expose port
 EXPOSE 5173
-
-# Run the development server
-CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+CMD ["pnpm", "dev", "--host", "0.0.0.0"]
