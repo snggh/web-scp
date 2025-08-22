@@ -49,7 +49,7 @@ function App() {
         <div className="flex justify-between items-center mb-6">
           <div className="flex gap-2">
             <Button
-              variant={activeTab === 'connect' ? 'default' : 'outline'}
+              variant={activeTab === 'connect' ? 'default' : 'outline-solid'}
               onClick={() => setActiveTab('connect')}
               className="flex items-center gap-2"
               disabled={activeConnection !== null}
@@ -58,7 +58,7 @@ function App() {
               {activeConnection ? 'Connected' : 'Connect'}
             </Button>
             <Button
-              variant={activeTab === 'explorer' ? 'default' : 'outline'}
+              variant={activeTab === 'explorer' ? 'default' : 'outline-solid'}
               onClick={() => setActiveTab('explorer')}
               disabled={!hasConnections}
               className="flex items-center gap-2"
