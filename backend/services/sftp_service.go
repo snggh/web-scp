@@ -52,11 +52,122 @@ func (s *SFTPService) Connect(ctx context.Context, config models.ConnectionReque
 	// Create SSH client configuration
 	sshConfig := &ssh.ClientConfig{
 		User:            config.Username,
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(), // TODO: Implement proper host key verification
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(), // Will be replaced by ConnectWithHostKeyVerification
 		Timeout:         s.config.ConnectTimeout,
 	}
 
 	// Add authentication method based on AuthMethod
+	var authMethods []ssh.AuthMethod
+
+	switch config.AuthMethod {
+	case models.AuthMethodKey:
+		// SSH key authentication
+		var privateKeyData []byte
+		var err error
+
+		if config.PrivateKeyFile != "" {
+			// Load from uploaded file
+			privateKeyData, err = ioutil.ReadFile(config.PrivateKeyFile)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read private key file: %w", err)
+			}
+		} else if config.PrivateKey != "" {
+			// Use provided private key content
+			privateKeyData = []byte(config.PrivateKey)
+		} else {
+			return nil, fmt.Errorf("no private key provided for key authentication")
+		}
+
+		key, err := s.parsePrivateKey(privateKeyData, config.Passphrase)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse private key: %w", err)
+		}
+		authMethods = []ssh.AuthMethod{ssh.PublicKeys(key)}
+
+	case models.AuthMethodPassword:
+		// Password authentication
+		if config.Password == "" {
+			return nil, fmt.Errorf("password is required for password authentication")
+		}
+		authMethods = []ssh.AuthMethod{ssh.Password(config.Password)}
+
+	default:
+		// Backward compatibility - try to determine from existing fields
+		if config.PrivateKey != "" || config.PrivateKeyFile != "" {
+			// SSH key authentication (legacy support)
+			var privateKeyData []byte
+			var err error
+
+			if config.PrivateKeyFile != "" {
+				privateKeyData, err = ioutil.ReadFile(config.PrivateKeyFile)
+				if err != nil {
+					return nil, fmt.Errorf("failed to read private key file: %w", err)
+				}
+			} else if config.PrivateKey != "" {
+				privateKeyData = []byte(config.PrivateKey)
+			}
+
+			key, err := s.parsePrivateKey(privateKeyData, config.Passphrase)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse private key: %w", err)
+			}
+			authMethods = []ssh.AuthMethod{ssh.PublicKeys(key)}
+		} else if config.Password != "" {
+			// Password authentication
+			authMethods = []ssh.AuthMethod{ssh.Password(config.Password)}
+		} else {
+			return nil, fmt.Errorf("no authentication method provided")
+		}
+	}
+
+	sshConfig.Auth = authMethods
+
+	// Connect to SSH server
+	resolvedHost := s.resolveHost(config.Host)
+	address := net.JoinHostPort(resolvedHost, strconv.Itoa(config.Port))
+	sshClient, err := ssh.Dial("tcp", address, sshConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to SSH server: %w", err)
+	}
+
+	// Create SFTP client
+	sftpClient, err := sftp.NewClient(sshClient)
+	if err != nil {
+		sshClient.Close()
+		return nil, fmt.Errorf("failed to create SFTP client: %w", err)
+	}
+
+	client := &SFTPClient{
+		sshClient:  sshClient,
+		sftpClient: sftpClient,
+		config:     config,
+	}
+
+	return client, nil
+}
+
+// ConnectWithHostKeyVerification connects to SFTP server with proper host key verification
+func (s *SFTPService) ConnectWithHostKeyVerification(ctx context.Context, config models.ConnectionRequest, userSession string) (*SFTPClient, error) {
+	if config.Protocol != models.SFTP {
+		return nil, fmt.Errorf("invalid protocol, expected SFTP")
+	}
+
+	// Create host key callback for this session and connection
+	hostKeyCallback := GlobalHostKeyManager.CreateHostKeyCallback(
+		userSession, 
+		config.Host, 
+		strconv.Itoa(config.Port), 
+		config.Username,
+	)
+
+	// Create SSH client configuration with proper host key verification
+	sshConfig := &ssh.ClientConfig{
+		User:            config.Username,
+		HostKeyCallback: hostKeyCallback,
+		Timeout:         s.config.ConnectTimeout,
+	}
+
+	// Add authentication methods (same as original Connect method)
 	var authMethods []ssh.AuthMethod
 
 	switch config.AuthMethod {

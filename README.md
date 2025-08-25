@@ -155,13 +155,41 @@ Copy `backend/.env.example` to `backend/.env` and configure:
 
 ```env
 PORT=3000
-JWT_SECRET=your-secret-key-here
+JWT_SECRET=your-strong-256-bit-secret-here
 MAX_CONNECTIONS_PER_USER=5
 CONNECTION_TIMEOUT_MINUTES=15
 MAX_UPLOAD_SIZE_MB=5000
 CORS_ORIGINS=http://localhost:5173
 WS_PATH=/ws
 ```
+
+### 🔐 Security Configuration
+
+#### JWT Secret Generation
+**IMPORTANT**: Generate a strong JWT secret for production:
+
+```bash
+# Generate a secure 256-bit (32-byte) secret
+openssl rand -hex 32
+
+# Or use Node.js
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+
+# Or use Python
+python3 -c "import secrets; print(secrets.token_hex(32))"
+```
+
+**Example strong JWT secret:**
+```env
+JWT_SECRET=a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456
+```
+
+#### Security Requirements:
+- **Minimum 32 characters (256-bit)**
+- **Use random, unpredictable characters**
+- **Never commit secrets to version control**
+- **Use different secrets for development/production**
+- **Rotate secrets periodically in production**
 
 ## API Endpoints
 

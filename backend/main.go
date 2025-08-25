@@ -30,10 +30,11 @@ func main() {
 	// Initialize services
 	poolConfig := &services.PoolConfig{
 		MaxConnectionsPerUser: cfg.MaxConnectionsPerUser,
-		ConnectionTimeout:     30 * time.Minute, // Extended for debugging
-		CleanupInterval:       2 * time.Minute,  // More frequent cleanup for debugging
+		ConnectionTimeout:     2 * time.Minute,  // 2 minutes for testing timeout handling
+		CleanupInterval:       30 * time.Second, // Check every 30 seconds for faster testing
 	}
 	services.InitPoolManager(poolConfig)
+	services.InitHostKeyManager()
 
 	sftpConfig := &services.SFTPConfig{
 		ConnectTimeout: 30 * time.Second,
@@ -52,6 +53,7 @@ func main() {
 	handlers.InitAuthHandler(cfg)
 	handlers.InitConnectionHandler(services.GlobalPoolManager, services.GlobalSFTPService, services.GlobalFTPService)
 	handlers.InitFileHandler(services.GlobalPoolManager)
+	handlers.InitHostKeyHandler()
 
 	// Start WebSocket hub
 	go handlers.GlobalHub.Run()
@@ -111,6 +113,13 @@ func main() {
 	transfer.Use(handlers.GlobalAuthHandler.OptionalAuthMiddleware) // Allow both authenticated and anonymous access for testing
 	transfer.Post("/upload", handlers.GlobalFileHandler.UploadFile)
 	transfer.Post("/download", handlers.GlobalFileHandler.DownloadFile)
+
+	// Host key management routes
+	hostkey := api.Group("/hostkey")
+	hostkey.Use(handlers.GlobalAuthHandler.OptionalAuthMiddleware)
+	hostkey.Post("/trust", handlers.GlobalHostKeyHandler.TrustHostKey)
+	hostkey.Get("/trusted", handlers.GlobalHostKeyHandler.GetTrustedHosts)
+	hostkey.Delete("/trusted", handlers.GlobalHostKeyHandler.ClearTrustedHosts)
 
 	// WebSocket route
 	app.Get("/ws", handlers.GlobalHub.HandleWebSocket)

@@ -7,6 +7,8 @@ import { TransferQueue } from '@/components/TransferQueue'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { useConnectionStore } from '@/stores/connectionStore'
 import { apiClient } from '@/services/api'
+import { Toaster } from '@/components/ui/toaster'
+import { useConnectionHealth } from '@/hooks/useConnectionHealth'
 import { useGlobalKeyboardShortcuts, useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { Server, HardDrive, LogOut, FileText } from 'lucide-react'
 import { motion, AnimatePresence } from 'motion/react'
@@ -15,6 +17,12 @@ function App() {
   const [activeTab, setActiveTab] = useState<'connect' | 'explorer'>('connect')
   const { connections, activeConnection, removeConnection, setActiveConnection } = useConnectionStore()
   const hasConnections = connections.length > 0
+
+  // Monitor connection health and handle timeouts
+  useConnectionHealth({
+    checkInterval: 30 * 1000, // Check every 30 seconds for faster timeout detection
+    enabled: !!activeConnection
+  })
 
   // Auto-switch to explorer when a connection is made
   useEffect(() => {
@@ -299,6 +307,9 @@ function App() {
           </AnimatePresence>
         </div>
       </motion.main>
+      
+      {/* Toast notifications */}
+      <Toaster />
     </div>
   )
 }

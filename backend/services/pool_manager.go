@@ -115,7 +115,7 @@ func (pm *PoolManager) CreateConnection(ctx context.Context, userSession, connID
 	
 	switch config.Protocol {
 	case models.SFTP:
-		pooledConn.Client, err = pm.createSFTPConnection(ctx, config)
+		pooledConn.Client, err = pm.createSFTPConnection(ctx, config, userSession)
 	case models.FTP:
 		pooledConn.Client, err = pm.createFTPConnection(ctx, config)
 	default:
@@ -244,12 +244,13 @@ func (pm *PoolManager) startCleanup() {
 	}
 }
 
-func (pm *PoolManager) createSFTPConnection(ctx context.Context, config models.ConnectionRequest) (interface{}, error) {
+func (pm *PoolManager) createSFTPConnection(ctx context.Context, config models.ConnectionRequest, userSession string) (interface{}, error) {
 	if GlobalSFTPService == nil {
 		return nil, fmt.Errorf("SFTP service not initialized")
 	}
 	
-	client, err := GlobalSFTPService.Connect(ctx, config)
+	// Use secure connection method with host key verification
+	client, err := GlobalSFTPService.ConnectWithHostKeyVerification(ctx, config, userSession)
 	if err != nil {
 		return nil, err
 	}

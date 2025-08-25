@@ -91,3 +91,22 @@ type APIResponse struct {
 	Data    interface{} `json:"data,omitempty"`
 	Error   string      `json:"error,omitempty"`
 }
+
+// Host Key Verification Types
+type HostKeyVerificationError struct {
+	Type        string `json:"type"`        // "unknown" or "changed"
+	Message     string `json:"message"`
+	Fingerprint string `json:"fingerprint"`
+	Host        string `json:"host"`
+	Port        string `json:"port"`
+	HostID      string `json:"hostId"`      // user@host:port
+}
+
+type TrustHostKeyRequest struct {
+	UserSession string `json:"userSession" validate:"required"`
+	Host        string `json:"host" validate:"required"`
+	Port        string `json:"port" validate:"required"`
+	Username    string `json:"username" validate:"required"`
+	Fingerprint string `json:"fingerprint" validate:"required"`
+	Trust       bool   `json:"trust" validate:"required"`
+}

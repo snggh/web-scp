@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { useConnectionStore } from '@/stores/connectionStore'
 import { apiClient } from '@/services/api'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
+import { useTimeoutHandler } from '@/hooks/useTimeoutHandler'
 import { FileItem } from '@/types'
 import { 
   Folder, 
@@ -28,6 +29,7 @@ import {
 
 export function FileExplorer() {
   const { activeConnection } = useConnectionStore()
+  const { wrapApiCall } = useTimeoutHandler()
   const [files, setFiles] = useState<FileItem[]>([])
   const [isLoading, setIsLoading] = useState(false)
 
@@ -130,7 +132,16 @@ export function FileExplorer() {
     }
     setIsLoading(true)
     try {
-      const response = await apiClient.listFiles(activeConnection.id, path)
+      const response = await wrapApiCall(
+        () => apiClient.listFiles(activeConnection.id, path),
+        'loading files'
+      )
+      
+      if (!response) {
+        // Timeout occurred, component state will be reset by timeout handler
+        return
+      }
+      
       if (response.success && response.data) {
         // Handle response structure
         const actualData = (response.data as any).data || response.data

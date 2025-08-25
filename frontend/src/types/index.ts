@@ -52,3 +52,21 @@ export interface WSMessage {
   type: string
   data: any
 }
+
+export interface HostKeyVerificationError {
+  type: 'unknown' | 'changed'
+  message: string
+  fingerprint: string
+  host: string
+  port: string
+  hostId: string
+}
+
+export interface TrustHostKeyRequest {
+  userSession: string
+  host: string
+  port: string
+  username: string
+  fingerprint: string
+  trust: boolean
+}

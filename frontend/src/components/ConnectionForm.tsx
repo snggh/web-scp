@@ -6,7 +6,8 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useConnectionStore } from '@/stores/connectionStore'
 import { apiClient } from '@/services/api'
-import { Connection } from '@/types'
+import { Connection, HostKeyVerificationError } from '@/types'
+import { HostKeyVerificationDialog } from '@/components/HostKeyVerificationDialog'
 import { Loader2, TestTube, Plus, Key, Lock, Eye, EyeOff, CheckCircle, AlertCircle, Upload } from 'lucide-react'
 import { motion, AnimatePresence } from 'motion/react'
 
@@ -29,6 +30,9 @@ export function ConnectionForm() {
   const [testResult, setTestResult] = useState<string | null>(null)
   const [showPassword, setShowPassword] = useState(false)
   const [showPassphrase, setShowPassphrase] = useState(false)
+  const [hostKeyError, setHostKeyError] = useState<HostKeyVerificationError | null>(null)
+  const [showHostKeyDialog, setShowHostKeyDialog] = useState(false)
+  const [hostKeyLoading, setHostKeyLoading] = useState(false)
   
   // Refs for form navigation
   const nameRef = useRef<HTMLInputElement>(null)
@@ -121,7 +125,7 @@ export function ConnectionForm() {
     }
   }
 
-  const handleConnect = async () => {
+  const handleConnect = async (skipHostKeyCheck: boolean = false) => {
     setIsConnecting(true)
 
     try {
@@ -184,6 +188,33 @@ export function ConnectionForm() {
           passphrase: '',
         })
       } else {
+        // Check if this is a host key verification error
+        const errorMessage = result.error || ''
+        if (!skipHostKeyCheck && apiClient.isHostKeyError(errorMessage)) {
+          // First try to parse from the structured response data
+          let parsedError = apiClient.parseHostKeyErrorFromResponse(result)
+          
+          // Fallback to parsing from error message
+          if (!parsedError) {
+            parsedError = apiClient.parseHostKeyError(errorMessage)
+          }
+          
+          if (parsedError) {
+            // Use the form data for host/port if not found in error message
+            const hostKeyVerificationError: HostKeyVerificationError = {
+              type: parsedError.type,
+              message: parsedError.message,
+              fingerprint: parsedError.fingerprint,
+              host: parsedError.host || formData.host,
+              port: parsedError.port || formData.port.toString(),
+              hostId: `${formData.username}@${parsedError.host || formData.host}:${parsedError.port || formData.port}`
+            }
+            
+            setHostKeyError(hostKeyVerificationError)
+            setShowHostKeyDialog(true)
+            return
+          }
+        }
         setTestResult(`❌ Connection failed: ${result.error}`)
       }
     } catch (error) {
@@ -191,6 +222,52 @@ export function ConnectionForm() {
     } finally {
       setIsConnecting(false)
     }
+  }
+
+  const handleTrustHostKey = async () => {
+    if (!hostKeyError) return
+
+    setHostKeyLoading(true)
+    try {
+      const sessionId = apiClient.getSessionId()
+      if (!sessionId) {
+        setTestResult('❌ No session found')
+        setShowHostKeyDialog(false)
+        return
+      }
+
+      const trustResult = await apiClient.trustHostKey({
+        userSession: sessionId,
+        host: hostKeyError.host,
+        port: hostKeyError.port,
+        username: formData.username,
+        fingerprint: hostKeyError.fingerprint,
+        trust: true
+      })
+
+      if (trustResult.success) {
+        // Host key trusted, now retry the connection
+        setShowHostKeyDialog(false)
+        setHostKeyError(null)
+        
+        // Retry connection with host key check skipped
+        await handleConnect(true)
+      } else {
+        setTestResult(`❌ Failed to trust host key: ${trustResult.error}`)
+        setShowHostKeyDialog(false)
+      }
+    } catch (error) {
+      setTestResult(`❌ Failed to trust host key: ${error}`)
+      setShowHostKeyDialog(false)
+    } finally {
+      setHostKeyLoading(false)
+    }
+  }
+
+  const handleRejectHostKey = () => {
+    setShowHostKeyDialog(false)
+    setHostKeyError(null)
+    setTestResult('❌ Connection cancelled: Host key verification rejected')
   }
 
   const isFormValid = !!(
@@ -557,7 +634,7 @@ export function ConnectionForm() {
         </Button>
 
         <Button
-          onClick={handleConnect}
+          onClick={() => handleConnect()}
           disabled={!isFormValid || isConnecting}
           className="flex-1 flex items-center justify-center gap-2 h-11"
         >
@@ -574,6 +651,15 @@ export function ConnectionForm() {
           Connect
         </Button>
       </motion.div>
+
+      {/* Host Key Verification Dialog */}
+      <HostKeyVerificationDialog
+        isOpen={showHostKeyDialog}
+        error={hostKeyError}
+        onAccept={handleTrustHostKey}
+        onReject={handleRejectHostKey}
+        loading={hostKeyLoading}
+      />
     </motion.div>
   )
 }
