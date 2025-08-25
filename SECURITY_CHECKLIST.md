@@ -15,13 +15,15 @@
 - Missing security headers
 - Insecure session management
 
-### Security Score: **6/10** (Medium Risk - Major SSH Security Issue Resolved!)
+### Security Score: **7/10** (Medium Risk - Major Security Improvements Implemented!)
 
-### ✅ **RESOLVED** - SSH Host Key Verification
+### ✅ **RESOLVED** - SSH Host Key Verification & Connection Security
 - **Implemented secure host key verification** with Trust-on-First-Use (TOFU) pattern
 - **In-memory session-scoped storage** for trusted host keys
 - **User approval workflow** for unknown/changed host keys
 - **API endpoints** for host key management
+- **Connection timeout management** with automatic cleanup and user notifications
+- **Health monitoring system** to prevent broken connection states
 
 > **Note**: Score reflects this is a file transfer client (like WinSCP) where web app authentication is optional. JWT security will be addressed via environment configuration.
 
@@ -154,8 +156,21 @@ sshConfig := &ssh.ClientConfig{
 - **MITM Detection**: Changed host keys immediately rejected
 - **API Endpoints**: `/api/hostkey/trust`, `/api/hostkey/trusted`, `/api/hostkey/trusted` (DELETE)
 
-### 🟡 **HIGH** - Connection Security
-- [ ] **Add connection timeout enforcement** - Prevent hanging connections
+### ✅ **IMPLEMENTED** - Connection Timeout Management
+- [x] **Implemented connection timeout enforcement** - 2-minute configurable timeout with automatic cleanup
+- [x] **Frontend timeout detection** - Automatic detection of connection timeouts with proper error handling
+- [x] **Connection health monitoring** - Periodic health checks (30s intervals) to detect stale connections
+- [x] **User-friendly timeout notifications** - Toast notifications with context-aware messages
+- [x] **Automatic state reset** - UI automatically returns to connection form on timeout
+- [x] **Session cleanup on timeout** - Proper cleanup of connection state and API sessions
+
+**Implementation Details:**
+- **Backend**: `ConnectionTimeout: 2 * time.Minute` with `CleanupInterval: 30 * time.Second`
+- **Frontend**: `useConnectionHealth` hook with automatic error detection
+- **UX**: Users get clear feedback when connections timeout instead of being stuck in broken state
+- **Testing**: Configurable timeout duration for development (2min) vs production (30min+)
+
+### 🟡 **HIGH** - Additional Connection Security
 - [ ] **Implement connection retry limits** - Prevent connection abuse
 - [ ] **Add connection rate limiting** - Limit concurrent connections per IP
 - [ ] **Monitor connection attempts** - Log and alert on suspicious activity
@@ -385,13 +400,14 @@ if userSession == "" {
 ## 🚀 Quick Wins (Fix First)
 
 1. ✅ ~~**Fix SSH host key verification**~~ - **IMPLEMENTED** with TOFU pattern and user approval workflow
-2. **Add input path sanitization** - Missing in all file handlers (prevent directory traversal)
-3. **Add security headers middleware** - Missing entirely (prevent XSS, clickjacking)
-4. **Implement basic rate limiting** - Missing entirely (prevent DoS attacks)
-5. **Add file type validation** - No restrictions on upload types
-6. **Secure temp file permissions** - Default permissions too permissive
-7. **Improve WebSocket authentication** - `backend/handlers/websocket.go:249`
-8. **Add JWT secret validation** - Validate secret strength at startup (if using web app auth)
+2. ✅ ~~**Add connection timeout management**~~ - **IMPLEMENTED** with health monitoring and automatic cleanup
+3. **Add input path sanitization** - Missing in all file handlers (prevent directory traversal)
+4. **Add security headers middleware** - Missing entirely (prevent XSS, clickjacking)
+5. **Implement basic rate limiting** - Missing entirely (prevent DoS attacks)
+6. **Add file type validation** - No restrictions on upload types
+7. **Secure temp file permissions** - Default permissions too permissive
+8. **Improve WebSocket authentication** - `backend/handlers/websocket.go:249`
+9. **Add JWT secret validation** - Validate secret strength at startup (if using web app auth)
 
 ---
 
